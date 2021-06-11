@@ -1,0 +1,11 @@
+#!/bin/bash
+set -o errexit
+
+case "$1" in
+    *)
+        set -- TranslocPreprocess.pl "$@"
+    ;;
+esac
+
+echo "$@"
+exec "$@"

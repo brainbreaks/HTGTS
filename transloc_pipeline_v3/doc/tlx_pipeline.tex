@@ -1,0 +1,69 @@
+% tlx_filter.tex - An article describing the the Alt Lab Translocation Pipeline.
+
+\documentclass{article}
+%\usepackage{times}
+\usepackage[colorlinks=true, urlcolor=blue]{hyperref}
+
+
+\begin{document}
+
+\title{Translocation Pipeline Overview}
+\author{Robin M. Meyers\\
+  Laboratory of Fredrick W. Alt,\\
+  Boston Children's Hopsital, Harvard Medical School\\
+  \href{mailto:robin.meyers@childrens.harvard.edu}{\texttt{robin.meyers@childrens.harvard.edu}}}
+\date{Created: January 15, 2014; Updated: \today}
+\maketitle
+
+\begin{abstract}
+
+\end{abstract}
+
+
+\section{Introduction}
+
+\paragraph{} This document assumes paired-end read libraries. However, the analysis pipeline can handle single-end read libraries and treats them the same as a paired-end library without the reverse read.
+
+\section{Pre-processing}
+\subsection*{De-multiplex}
+\paragraph{} The program fastq-multx of the \href{}{ea-utils} sorts the entire Illumina MiSeq run into different libraries by a barcode defined as the first ten expected basepairs of R1. This information is gathered from the \texttt{MID} and \texttt{Primer} fields of the metadata file.
+
+
+\subsection*{Adapter Trimming}
+\paragraph{} The program \href{}{SeqPrep} trims all reads of the Illumina MiSeq adapters using default parameters.
+
+\section{Alignment}
+
+\paragraph{} All reads are aligned to the selected reference genome using \href{}{Bowtie2}. Paired-end reads are handled separately but aligned using the same parameters. All reads are also aligned to the adapter (typically AP2) used during library preparation, as it usually accounts for 38 bp on R2. In non-endogenous breaksite libraries, all reads are further aligned to the breaksite cassette sequence given in \texttt{Breakseq} column of the metadata file.
+
+\section{Optimal Query Coverage}
+
+\paragraph{} 
+
+
+\section{Filters}
+\subsection*{Unjoined Reads}
+\paragraph{} The \emph{Unjoined Reads} filter removes reads satisfying any one of the following conditions which are indicative of a read that was either never cut, never rejoined, or truncated short of the junction. These conditions are:
+\begin{itemize}
+  \item There is only a single alignment in the OCS (the bait alignment).
+  \item The second alignment in the OCS is to the adapter used in library preparation.
+  \item The bait alignment extends more than \emph{n} bases past the targeted site.
+\end{itemize}
+
+\subsection*{Mapping Quality}
+\paragraph{}
+
+\subsection*{Mispriming}
+
+\subsection*{Frequent Cutter}
+
+\subsection*{Breaksite}
+
+\subsection*{Sequential Junctions}
+
+\subsection*{De-duplicate}
+
+\section{Post-processing}
+
+
+\end{document}
