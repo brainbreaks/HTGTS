@@ -2,9 +2,5 @@
 <project version="4">
   <component name="VcsDirectoryMappings">
     <mapping directory="$PROJECT_DIR$" vcs="Git" />
-    <mapping directory="$PROJECT_DIR$/test/fastq-multx" vcs="Git" />
-    <mapping directory="$PROJECT_DIR$/test/transloc_pipeline" vcs="Git" />
-    <mapping directory="$PROJECT_DIR$/tutorial" vcs="Git" />
-    <mapping directory="$PROJECT_DIR$/tutorial_dat" vcs="Git" />
   </component>
 </project>
