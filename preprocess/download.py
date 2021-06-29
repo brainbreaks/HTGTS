@@ -117,30 +117,8 @@ def download_genome(genome, path):
 
 def download_dependencies(path):
     # # Download libraries used in the pipeline
-    download_file("https://github.com/BenLangmead/bowtie2/releases/download/v2.2.9/bowtie2-2.2.9-linux-x86_64.zip", os.path.join(path, "bowtie2-2.2.9-linux-x86_64.zip"))
-    download_file("https://master.dl.sourceforge.net/project/samtools/samtools/1.6/samtools-1.6.tar.bz2", os.path.join(path, "samtools-1.6.tar.bz2"))
-    download_file("https://github.com/arq5x/bedtools2/releases/download/v2.29.1/bedtools-2.29.1.tar.gz", os.path.join(path, "bedtools-2.29.1.tar.gz"))
-    download_file("https://anaconda.org/bioconda/gfold/1.1.4/download/linux-64/gfold-1.1.4-gsl2.2_2.tar.bz2", os.path.join(path, "gfold-1.1.4-gsl2.2_2.tar.bz2"))
-    download_file("http://www.artfiles.org/gnu.org/gsl/gsl-2.2.1.tar.gz", os.path.join(path, "gsl-2.2.1.tar.gz"))
-    download_file("http://hgdownload.soe.ucsc.edu/admin/exe/linux.x86_64/wigToBigWig", os.path.join(path, "wigToBigWig"))
-    download_file("http://hgdownload.soe.ucsc.edu/admin/exe/linux.x86_64/bigWigToWig", os.path.join(path, "bigWigToWig"))
-    download_file("https://github.com/bxlab/bx-python/archive/v0.8.9.tar.gz", os.path.join(path, "bx-python-0.8.9.tar.gz"))
-    download_file("https://netcologne.dl.sourceforge.net/project/rseqc/RSeQC-2.6.4.tar.gz", os.path.join(path, "RSeQC-2.6.4.tar.gz"))
     download_file("https://github.com/numpy/numpy/releases/download/v1.16.6/numpy-1.16.6.tar.gz", os.path.join(path, "numpy-1.16.6.tar.gz"))
-    download_file("https://github.com/cython/cython/archive/0.29.19.tar.gz", os.path.join(path, "cython-0.29.19.tar.gz"))
-    download_file("https://storage.googleapis.com/google-code-archive-downloads/v2/code.google.com/python-nose/nose-1.0.0%20(1).tar.gz", os.path.join(path, "nose-1.0.0.tar.gz"))
-    download_file("https://github.com/pysam-developers/pysam/archive/v0.16.0.tar.gz", os.path.join(path, "pysam-0.16.0.tar.gz"))
-    download_file("https://github.com/benjaminp/six/archive/1.15.0.tar.gz", os.path.join(path, "six-1.15.0.tar.gz"))
-    download_file("https://github.com/psf/requests/archive/v2.24.0.tar.gz", os.path.join(path, "requests-2.24.0.tar.gz"))
-    download_file("https://github.com/tqdm/tqdm/archive/v4.49.0.tar.gz", os.path.join(path, "tqdm-4.49.0.tar.gz"))
-    download_file("https://github.com/daler/pybedtools/archive/v0.8.0.tar.gz", os.path.join(path, "pydevtools-0.8.0.tar.gz"))
-    download_file("https://github.com/pandas-dev/pandas/archive/v0.24.2.tar.gz", os.path.join(path, "pandas-0.24.2.tar.gz"))
-    download_file("https://github.com/dateutil/dateutil/releases/download/2.8.1/python-dateutil-2.8.1.tar.gz", os.path.join(path, "dateutil-2.8.1.tar.gz"))
-    download_file("https://github.com/kjd/idna/archive/v2.10.tar.gz", os.path.join(path, "idna-2.10.tar.gz"))
-    download_file("https://github.com/urllib3/urllib3/archive/1.25.10.tar.gz", os.path.join(path, "urllib3-1.25.10"))
-    download_file("https://github.com/chardet/chardet/archive/3.0.4.tar.gz", os.path.join(path, "chardet-3.0.4.tar.gz"))
-    download_file("https://github.com/certifi/python-certifi/archive/2020.06.20.tar.gz", os.path.join(path, "python-certifi-2020.06.20.tar.gz"))
-
+    download_file("https://github.com/macs3-project/MACS/archive/refs/tags/v2.2.7.1.tar.gz", os.path.join(path, "v2.2.7.1.tar.gz"))
 
 
     #download_file("https://github.com/stub42/pytz/archive/release_2020.1.tar.gz", os.path.join(path, "pytz-2020.1.tar.gz"))

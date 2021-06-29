@@ -7,7 +7,7 @@ ARG http_proxy
 ARG https_proxy
 ENV DESTINATION=/bin/transloc_pipeline
 ENV MAKEFLAGS='-j 32'
-ENV PATH=$DESTINATION:$DESTINATION/HTGTS/bin:$DESTINATION/HTGTS/R:${PATH}
+ENV PATH=$DESTINATION:$DESTINATION/HTGTS/bin:$DESTINATION/HTGTS/R:$DESTINATION/HTGTS/tools:${PATH}
 ENV GENOME_DB=./genomes
 ENV BOWTIE2_INDEXES=~/mount
 ENV PASSWORD=s215v
@@ -18,7 +18,21 @@ WORKDIR /mount
 RUN mkdir $DESTINATION
 
 RUN http_proxy="${http_proxy}" https_proxy="${https_proxy}" apt-get update
-RUN http_proxy="${http_proxy}" https_proxy="${https_proxy}" apt-get install -y bioperl libbio-samtools-perl libtext-csv-perl libfile-which-perl libipc-system-simple-perl ea-utils seqprep bowtie2 python3-tqdm python3-pybedtools python3-pandas
+RUN http_proxy="${http_proxy}" https_proxy="${https_proxy}" apt-get install -y \
+    bioperl \
+    libbio-samtools-perl \
+    libtext-csv-perl \
+    libfile-which-perl \
+    libipc-system-simple-perl \
+    ea-utils \
+    seqprep \
+    bowtie2 \
+    python3-tqdm \
+    python3-pybedtools \
+    python3-pandas \
+    python3-dev \
+    python3-pip \
+    python3-numpy
 
 RUN http_proxy="${http_proxy}" https_proxy="${https_proxy}" install2.r --error --deps TRUE argparser plyr
 RUN http_proxy="${http_proxy}" https_proxy="${https_proxy}" /usr/local/lib/R/site-library/littler/examples/installBioc.r GenomicRanges BSgenome
@@ -39,4 +53,6 @@ COPY preprocess/gff_longest_transcript.py  $DESTINATION/gff_longest_transcript.p
 RUN echo '#!/bin/bash \npython3 $DESTINATION/gff_longest_transcript.py "$@"' > $DESTINATION/longest-transcript; chmod 755 $DESTINATION/longest-transcript
 COPY Entrypoint  $DESTINATION/Entrypoint
 
-#ENTRYPOINT ["Entrypoint"]
+RUN http_proxy="${http_proxy}" https_proxy="${https_proxy}" python3.8 -m pip install macs2
+
+ENTRYPOINT ["Entrypoint"]

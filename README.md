@@ -44,6 +44,11 @@ singularity exec -B `pwd` htgts_latest.sif TranslocPreprocess.pl tutorial_metada
 singularity exec -B `pwd` htgts_latest.sif TranslocWrapper.pl tutorial_metadata.txt preprocess/ results/ --threads 2
 ```
 
+Detect translocation peaks using MACS2
+```console
+singularity exec -B `pwd` htgts_latest.sif tlx2BED-MACS.pl
+singularity exec -B `pwd` htgts_latest.sif macs2
+```
 
 <a name="singularity-inspect">Inspect container</a>
 ----------------------------------------------------
@@ -70,10 +75,15 @@ docker run -v ${PWD}:/mount -u $(id -g ${USER}):$(id -g ${USER}) -it --entrypoin
 
 Run HTGTS pipeline. Keep in mind that refGene annotation file (refGene.bed) is created automatically for you from geneRef.gtf 
 ```console
-docker run -v ${PWD}:/mount -u $(id -g ${USER}):$(id -g ${USER}) -it TranslocPreprocess.pl tutorial_metadata.txt preprocess --read1 pooled_R1.fastq.gz --read2 pooled_R2.fastq.gz
-docker run -v ${PWD}:/mount -u $(id -g ${USER}):$(id -g ${USER}) -it TranslocWrapper.pl tutorial_metadata.txt preprocess/ results/ --threads 2
+docker run -v ${PWD}:/mount -u $(id -g ${USER}):$(id -g ${USER}) -it --entrypoint TranslocPreprocess.pl htgts tutorial_metadata.txt preprocess --read1 pooled_R1.fastq.gz --read2 pooled_R2.fastq.gz
+docker run -v ${PWD}:/mount -u $(id -g ${USER}):$(id -g ${USER}) -it --entrypoint TranslocWrapper.pl htgts tutorial_metadata.txt preprocess/ results/ --threads 2
 ```
 
+Detect translocation peaks using MACS2
+```console
+docker run -v ${PWD}:/mount -u $(id -g ${USER}):$(id -g ${USER}) -it --entrypoint tlx2BED-MACS.pl htgts
+docker run -v ${PWD}:/mount -u $(id -g ${USER}):$(id -g ${USER}) -it --entrypoint macs2 htgts
+```
 
 <a name="docker-inspect">Inspect container</a>
 ----------------------------------------------------
