@@ -37,8 +37,8 @@ RUN http_proxy="${http_proxy}" https_proxy="${https_proxy}" apt-get install -y \
 RUN http_proxy="${http_proxy}" https_proxy="${https_proxy}" install2.r --error --deps TRUE argparser plyr
 RUN http_proxy="${http_proxy}" https_proxy="${https_proxy}" /usr/local/lib/R/site-library/littler/examples/installBioc.r GenomicRanges BSgenome
 
-# HTGTS v2
-# RUN cd $DESTINATION && git clone https://github.com/robinmeyers/transloc_pipeline.git HTGTS
+# MACS2
+RUN http_proxy="${http_proxy}" https_proxy="${https_proxy}" python3.8 -m pip install macs2
 
 RUN http_proxy="${http_proxy}" https_proxy="${https_proxy}" cpan install Interpolation Storable Switch::Plain
 RUN cd /bin && \
@@ -52,7 +52,6 @@ RUN echo '#!/bin/bash \npython3 $DESTINATION/download.py "$@"' > $DESTINATION/do
 COPY preprocess/gff_longest_transcript.py  $DESTINATION/gff_longest_transcript.py
 RUN echo '#!/bin/bash \npython3 $DESTINATION/gff_longest_transcript.py "$@"' > $DESTINATION/longest-transcript; chmod 755 $DESTINATION/longest-transcript
 COPY Entrypoint  $DESTINATION/Entrypoint
-
-RUN http_proxy="${http_proxy}" https_proxy="${https_proxy}" python3.8 -m pip install macs2
+RUN chmod 755 $DESTINATION/Entrypoint $DESTINATION/HTGTS/bin/*  $DESTINATION/HTGTS/tools/*
 
 ENTRYPOINT ["Entrypoint"]
