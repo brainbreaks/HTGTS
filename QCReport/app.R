@@ -1,1 +1,1 @@
-shiny::runApp(".")
+shiny::runApp("QCReport")

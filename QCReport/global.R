@@ -8,8 +8,8 @@ options(shiny.maxRequestSize=5*1024^3)
 options(shiny.sanitize.errors = TRUE)
 
 # baits_df = readr::read_tsv("data/baits.tsv")
-samples_df = readr::read_tsv("data/samples.tsv")
-offtargets_df = readr::read_tsv("data/offtargets.tsv")
+# samples_df = readr::read_tsv("data/samples.tsv")
+# offtargets_df = readr::read_tsv("data/offtargets.tsv")
 repeatmasker_df = readr::read_tsv("data/ucsc_hg19_repeatmasker.tsv", col_names=names(repeatmasker_cols$cols), col_types=repeatmasker_cols, skip=1) %>%
   dplyr::mutate(repeatmasker_id=1:n())
 repeatmasker_ranges = GenomicRanges::makeGRangesFromDataFrame(repeatmasker_df %>% dplyr::mutate(seqnames=repeatmasker_chrom, start=repeatmasker_start, end=repeatmasker_end), keep.extra.columns=T)

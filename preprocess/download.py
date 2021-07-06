@@ -11,8 +11,35 @@ import glob
 from gff_longest_transcript import find_longest_transcript
 import gzip
 
+def download_ucsc_table(genome, track, table, dest=None, description=None, overwrite=False):
+    data = {"jsh_pageVertPos": 0, "clade": "mammal", "org": "Mouse", "db": genome, "hgta_group": "varRep",
+        "hgta_track": track, "hgta_table": table, "hgta_regionType": "genome", "position": "chr12:56694976-56714605",
+        "hgta_outputType": "primaryTable", "boolshad.sendToGalaxy": 0, "boolshad.sendToGreat": 0,
+        "hgta_outFileName": "output.tsv", "hgta_compressType": "none", "hgta_doTopSubmit": "get output"
+    }
 
-def download_file(url, dest=None, description=None, overwrite=False, compressed=False):
+    path = download_file("https://genome.ucsc.edu/cgi-bin/hgTables", data=data, dest=dest, description=description, overwrite=overwrite)
+
+    return path
+    # swScore	milliDiv	milliDel	milliIns	genoName	genoStart	genoEnd	genoLeft	strand	repName	repClass	repFamily	repStart	repEnd	repLeft	id
+    # repeatmasker_bin = bin
+    # repeatmasker_score = swScore
+    # repeatmasker_mismatches_per_kb = milliDiv
+    # repeatmasker_deletions_per_kb = milliDel
+    # repeatmasker_insertions_per_kb = milliIns
+    # repeatmasker_chrom = genoName
+    # repeatmasker_start = genoStart
+    # repeatmasker_end = genoEnd
+    # repeatmasker_genoLeft = genoLeft
+    # repeatmasker_strand = strand
+    # repeatmasker_name = repName
+    # repeatmasker_class = repClass
+    # repeatmasker_family = repFamily
+    # repeatmasker_repStart = repStart
+    # repeatmasker_repEnd = repEnd
+    # repeatmasker_id = id
+
+def download_file(url, headers=None, data=None, dest=None, description=None, overwrite=False, compressed=False):
     if description is None:
         description = 'Downloading file "{}" ==> "{}"...'.format(url, dest)
 
@@ -21,8 +48,12 @@ def download_file(url, dest=None, description=None, overwrite=False, compressed=
         return dest
 
     if re.match("^(http|ftp)", url):
-        response = requests.get(url, stream=True)
-        total_size_in_bytes= int(response.headers.get('content-length', 0))
+        response = None
+        if data is None:
+            response = requests.get(url, stream=True)
+        else:
+            response = requests.post(url, data=data, stream=True)
+        total_size_in_bytes = int(response.headers.get('content-length', 0))
         block_size = 1024 #1 Kibibyte
 
         progress_bar = tqdm.tqdm(total=total_size_in_bytes, unit='iB', unit_scale=True)
@@ -48,6 +79,7 @@ def download_file(url, dest=None, description=None, overwrite=False, compressed=
                 path = f_out.name
 
     if dest:
+        dest = os.path.abspath(dest)
         if not os.path.exists(os.path.dirname(dest)):
             os.makedirs(os.path.dirname(dest))
 
@@ -103,25 +135,27 @@ def download_bowtie2_index(url, dest, overwrite=False):
                 pass
 
 def download_genome(genome, path):
-    download_file("http://hgdownload.cse.ucsc.edu/goldenpath/{genome}/database/chromInfo.txt.gz".format(genome=genome), os.path.join(path, "{genome}/annotation/ChromInfo.txt".format(genome=genome)), compressed=True)
-    download_file("http://hgdownload.cse.ucsc.edu/goldenpath/{genome}/database/cytoBand.txt.gz".format(genome=genome), os.path.join(path, "{genome}/annotation/cytoBand.txt".format(genome=genome)), compressed=True)
-    download_raw_genome("http://hgdownload.cse.ucsc.edu/goldenPath/{genome}/bigZips/chromFa.tar.gz".format(genome=genome), os.path.join(path, "{genome}/{genome}.fa".format(genome=genome)))
+    download_ucsc_table(genome=genome, table="rmsk", track="rmsk", dest=os.path.join(path, "{genome}/annotation/ucsc_repeatmasker.tsv".format(genome=genome)))
 
-    download_file("http://hgdownload.cse.ucsc.edu/goldenPath/{genome}/bigZips/{genome}.chrom.sizes".format(genome=genome), os.path.join(path, "{genome}/annotation/{genome}.chrom.sizes".format(genome=genome)))
-    download_bowtie2_index("https://genome-idx.s3.amazonaws.com/bt/{genome}.zip".format(genome=genome), path)
+    download_file("http://hgdownload.cse.ucsc.edu/goldenpath/{genome}/database/chromInfo.txt.gz".format(genome=genome), dest=os.path.join(path, "{genome}/annotation/ChromInfo.txt".format(genome=genome)), compressed=True)
+    download_file("http://hgdownload.cse.ucsc.edu/goldenpath/{genome}/database/cytoBand.txt.gz".format(genome=genome), dest=os.path.join(path, "{genome}/annotation/cytoBand.txt".format(genome=genome)), compressed=True)
+    download_raw_genome("http://hgdownload.cse.ucsc.edu/goldenPath/{genome}/bigZips/chromFa.tar.gz".format(genome=genome), dest=os.path.join(path, "{genome}/{genome}.fa".format(genome=genome)))
+
+    download_file("http://hgdownload.cse.ucsc.edu/goldenPath/{genome}/bigZips/{genome}.chrom.sizes".format(genome=genome), dest=os.path.join(path, "{genome}/annotation/{genome}.chrom.sizes".format(genome=genome)))
+    download_bowtie2_index("https://genome-idx.s3.amazonaws.com/bt/{genome}.zip".format(genome=genome), dest=path)
     #
-    download_file("http://hgdownload.cse.ucsc.edu/goldenPath/{genome}/bigZips/genes/{genome}.refGene.gtf.gz".format(genome=genome), os.path.join(path, "{genome}.refGene.gtf.gz".format(genome=genome)))
+    download_file("http://hgdownload.cse.ucsc.edu/goldenPath/{genome}/bigZips/genes/{genome}.refGene.gtf.gz".format(genome=genome), dest=os.path.join(path, "{genome}.refGene.gtf.gz".format(genome=genome)))
     print("Creating annotation file from {gtf}...".format(gtf=os.path.join(path, "{genome}.refGene.gtf.gz".format(genome=genome))))
     find_longest_transcript(os.path.join(path, "{genome}.refGene.gtf.gz".format(genome=genome)), os.path.join(path, "{genome}/annotation/refGene.bed".format(genome=genome)), clip_start=50, clip_strand_specific=True)
 
 
 def download_dependencies(path):
     # # Download libraries used in the pipeline
-    download_file("https://github.com/numpy/numpy/releases/download/v1.16.6/numpy-1.16.6.tar.gz", os.path.join(path, "numpy-1.16.6.tar.gz"))
-    download_file("https://github.com/macs3-project/MACS/archive/refs/tags/v2.2.7.1.tar.gz", os.path.join(path, "v2.2.7.1.tar.gz"))
+    download_file("https://github.com/numpy/numpy/releases/download/v1.16.6/numpy-1.16.6.tar.gz", dest=os.path.join(path, "numpy-1.16.6.tar.gz"))
+    download_file("https://github.com/macs3-project/MACS/archive/refs/tags/v2.2.7.1.tar.gz", dest=os.path.join(path, "v2.2.7.1.tar.gz"))
 
 
-    #download_file("https://github.com/stub42/pytz/archive/release_2020.1.tar.gz", os.path.join(path, "pytz-2020.1.tar.gz"))
+    #download_file("https://github.com/stub42/pytz/archive/release_2020.1.tar.gz", dest=os.path.join(path, "pytz-2020.1.tar.gz"))
 
 
 if __name__ == "__main__":
