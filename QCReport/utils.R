@@ -18,9 +18,23 @@ tlx_cols = cols(
 )
 
 repeatmasker_cols = cols(
-  repeatmasker_score=col_double(), repeatmasker_chrom=col_character(), repeatmasker_start=col_double(),
-  repeatmasker_end=col_double(), repeatmasker_strand=col_character(), repeatmasker_name=col_character(),
-  repeatmasker_class=col_character(), repeatmasker_family=col_character()
+  repeatmasker_bin=readr::col_double(),
+  repeatmasker_score=readr::col_double(),
+  repeatmasker_mismatches_per_kb=readr::col_double(),
+  repeatmasker_deletions_per_kb=readr::col_double(),
+  repeatmasker_insertions_per_kb=readr::col_double(),
+  repeatmasker_chrom=readr::col_character(),
+  repeatmasker_start=readr::col_double(),
+  repeatmasker_end=readr::col_double(),
+  repeatmasker_genoLeft=readr::col_double(),
+  repeatmasker_strand=readr::col_character(),
+  repeatmasker_name=readr::col_character(),
+  repeatmasker_class=readr::col_character(),
+  repeatmasker_family=readr::col_character(),
+  repeatmasker_repStart=readr::col_character(),
+  repeatmasker_repEnd=readr::col_character(),
+  repeatmasker_repLeft=readr::col_character(),
+  repeatmasker_id=readr::col_character()
 )
 
 macs2 = function(name, sample, control=NULL, qvalue=0.01, extsize=200, slocal=1000, output_dir="data/macs2", llocal=10000000) {

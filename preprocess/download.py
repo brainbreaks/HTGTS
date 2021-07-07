@@ -21,23 +21,6 @@ def download_ucsc_table(genome, track, table, dest=None, description=None, overw
     path = download_file("https://genome.ucsc.edu/cgi-bin/hgTables", data=data, dest=dest, description=description, overwrite=overwrite)
 
     return path
-    # swScore	milliDiv	milliDel	milliIns	genoName	genoStart	genoEnd	genoLeft	strand	repName	repClass	repFamily	repStart	repEnd	repLeft	id
-    # repeatmasker_bin = bin
-    # repeatmasker_score = swScore
-    # repeatmasker_mismatches_per_kb = milliDiv
-    # repeatmasker_deletions_per_kb = milliDel
-    # repeatmasker_insertions_per_kb = milliIns
-    # repeatmasker_chrom = genoName
-    # repeatmasker_start = genoStart
-    # repeatmasker_end = genoEnd
-    # repeatmasker_genoLeft = genoLeft
-    # repeatmasker_strand = strand
-    # repeatmasker_name = repName
-    # repeatmasker_class = repClass
-    # repeatmasker_family = repFamily
-    # repeatmasker_repStart = repStart
-    # repeatmasker_repEnd = repEnd
-    # repeatmasker_id = id
 
 def download_file(url, headers=None, data=None, dest=None, description=None, overwrite=False, compressed=False):
     if description is None:

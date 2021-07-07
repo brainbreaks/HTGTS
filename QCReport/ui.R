@@ -24,15 +24,18 @@ ui <- shiny::fluidPage(
         shiny::textInput("junsize", label="Junction size", value=300),
         shiny::textInput("extsize", label="extsize", value=2000),
         shiny::textInput("slocal", label="slocal", value=1000),
-        shiny::textInput("slocal", label="slocal", value=10000000)
+        shiny::textInput("llocal", label="llocal", value=10000000)
       )
     ),
 
     shiny::mainPanel(
       type="tabs",
       shiny::tabsetPanel(
-        shiny::tabPanel("Overview", shiny::plotOutput("overview_output"))
-        shiny::tabPanel("Calculate", shiny::actionButton("overview_calculate"))
+        shiny::tabPanel(
+          "Overview",
+          shiny::plotOutput("overview_output"),
+            shiny::actionButton("overview_calculate", label="Calculate")
+        )
       )
     )
   )
