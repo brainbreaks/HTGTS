@@ -1,19 +1,25 @@
 library(readr)
 library(stringr)
 library(dplyr)
+library(shinyjs)
 library(GenomeInfoDb)
+library(shiny)
+library(BSgenome)
 source("utils.R")
+source("graphics.R")
 
 
 options(shiny.maxRequestSize=5*1024^3)
 options(shiny.sanitize.errors = TRUE)
 
+strand_map = c("-1"="+", "1"="-")
+
 # baits_df = readr::read_tsv("data/baits.tsv")
 # samples_df = readr::read_tsv("data/samples.tsv")
 # offtargets_df = readr::read_tsv("data/offtargets.tsv")
 # setwd("/home/s215v/Workspace/HTGTS/QCReport")
-# genomes_path = "genomes"
-genomes_path = Sys.getenv(x="GENOME_DB", unset=".")
+genomes_path = "genomes"
+# genomes_path = Sys.getenv(x="GENOME_DB", unset=".")
 repeatmasker_path = file.path("..", genomes_path, "hg19", "annotation/ucsc_repeatmasker.tsv")
 repeatmasker_df = readr::read_tsv(repeatmasker_path, col_names=names(repeatmasker_cols$cols), col_types=repeatmasker_cols, skip=1) %>%
   dplyr::select(repeatmasker_chrom, repeatmasker_start, repeatmasker_end, repeatmasker_strand, repeatmasker_name, repeatmasker_class, repeatmasker_family) %>%
