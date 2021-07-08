@@ -34,12 +34,6 @@ server <- function(input, output, session) {
     req(!is.null(isolate(r$tlx_df)))
     print("test")
 
-    # pdf("test.pdf", width=100, height=100)
-    # par(cex=5)
-    # circlize::circos.initializeWithIdeogram(species="hg19")
-    # circlize::circos.clear()
-    # dev.off()
-
     print("input$circos_calculate")
     junsize = shiny::isolate(input$junsize)
     exclude_repeats = shiny::isolate(input$exclude_repeats)
@@ -51,26 +45,33 @@ server <- function(input, output, session) {
     qvalue = shiny::isolate(input$qvalue)
     slocal = shiny::isolate(input$slocal)
     llocal = shiny::isolate(input$llocal)
+    model = shiny::isolate(input$model)
+
 
     size = pmin(session$clientData$output_circos_output_width, session$clientData$output_circos_output_width)
     output$circos_output = renderImage({
 
-      setwd("/home/s215v/Workspace/HTGTS/QCReport")
-      size = 500
-      offtargets = list(datapath="test_data/offtargets.tsv")
-      tlx_df = readr::read_tsv("test_data/JJ03_B400_012_result.tlx", comment="#", skip=16, col_names=names(tlx_cols$cols), col_types=tlx_cols) %>% dplyr::mutate(tlx_id=1:n())
-      session = list(userData=list())
-      junsize = 300
-      exclude_repeats = F
-      exclude_bait_region = T
-      exclude_offtargets = T
-      bait_region = 500000
-      extsize = 2000
-      qvalue = 0.001
-      slocal = 1000
-      llocal = 10000000
+      # setwd("/home/s215v/Workspace/HTGTS/QCReport")
+      # size = 500
+      # offtargets = list(datapath="test_data/offtargets.tsv")
+      # r = list(tlx_df = readr::read_tsv("test_data/JJ03_B400_012_result.tlx", comment="#", skip=16, col_names=names(tlx_cols$cols), col_types=tlx_cols) %>% dplyr::mutate(tlx_id=1:n()))
+      # session = list(userData=list())
+      # junsize = 300
+      # exclude_repeats = F
+      # exclude_bait_region = T
+      # exclude_offtargets = T
+      # bait_region = 500000
+      # extsize = 2000
+      # qvalue = 0.001
+      # slocal = 1000
+      # llocal = 10000000
+      # model = "hg19"
 
-      tlx_df = r$tlx_df
+      cytoband_path = file.path(genomes_path, model, "annotation/cytoBand.txt")
+      cytoband = circlize::read.cytoband(cytoband_path, species=model)
+      cytoband_df = data.frame(cytoband$chr.len) %>% tibble::rownames_to_column("chrom") %>% dplyr::rename(chrom_length="cytoband.chr.len")
+
+      tlx_df = r$tlx_df %>% dplyr::filter(Rname %in% cytoband_df$chrom)
 
       if(exclude_repeats) {
         print("Search for overlaps with repeats")
@@ -80,10 +81,11 @@ server <- function(input, output, session) {
           dplyr::inner_join(repeatmasker_df, by=c("subjectHits"="repeatmasker_id")) %>%
           dplyr::group_by(queryHits) %>%
           dplyr::summarise(repeatmasker_name=paste(unique(repeatmasker_name), collapse=", "), repeatmasker_class=paste(unique(repeatmasker_class), collapse=", "), repeatmasker_family=paste(unique(repeatmasker_family), collapse=", "), repeatmasker_length=max(abs(repeatmasker_end-repeatmasker_start))) %>%
-          dplyr::right_join(r$tlx_df, by=c("queryHits"="tlx_id"))
+          dplyr::right_join(tlx_df, by=c("queryHits"="tlx_id"))
       } else {
         tlx_df$repeatmasker_class = NA_character_
       }
+
 
       if(exclude_bait_region) {
         print("Search for bait/bait junctions")
@@ -107,7 +109,6 @@ server <- function(input, output, session) {
       tlx_df = tlx_df %>%
         dplyr::filter(!is_offtarget & !is_bait & is.na(repeatmasker_class))
 
-
       f_bed = tempfile()
       print(paste0("Convert to BED (", f_bed, ")"))
       tlx_df %>%
@@ -116,16 +117,30 @@ server <- function(input, output, session) {
         dplyr::select(Rname, bed_start, bed_end, Qname, 0, bed_strand) %>%
         readr::write_tsv(file=f_bed, na="", col_names=F)
       print("Running MACS")
-      hits_df = macs2(name=basename(f_bed), sample=f_bed, extsize=extsize, qvalue=qvalue, slocal=slocal, llocal=llocal, output_dir=dirname(f_bed))
+      macs_df = macs2(name=basename(f_bed), sample=f_bed, extsize=extsize, qvalue=qvalue, slocal=slocal, llocal=llocal, output_dir=dirname(f_bed))
 
+      macs_ranges = GenomicRanges::makeGRangesFromDataFrame(macs_df %>% dplyr::mutate(seqnames=macs_chrom, start=macs_start, end=macs_end), keep.extra.columns=T)
+      tlx_ranges = GenomicRanges::makeGRangesFromDataFrame(tlx_df %>% dplyr::mutate(seqnames=Rname, start=Rstart, end=Rend), keep.extra.columns=T, ignore.strand=T)
+      links_df = as.data.frame(IRanges::mergeByOverlaps(macs_ranges, tlx_ranges)) %>%
+        dplyr::mutate(chrom1=macs_chrom, start1=macs_start, end1=macs_end) %>%
+        dplyr::group_by(chrom1, start1, end1) %>%
+        dplyr::summarize(chrom2=B_Rname[1], start2=floor(mean(B_Rstart)), end2=floor(mean(B_Rend)), color=ifelse(any(is_offtarget), "#74ADD180", "#F46D4380")) %>%
+        dplyr::ungroup()
+
+      data_df = tlx_df %>%
+        dplyr::select(chrom=Rname, start=Rstart, end=Rend, strand=Strand) %>%
+        dplyr::ungroup()
+
+      hits_df = macs_df %>%
+        dplyr::select(chrom=macs_chrom, start=macs_start, end=macs_end)
 
       session$userData$outfile_svg = tempfile(fileext=".svg")
       print(paste0("Plot circos ", session$userData$outfile_svg, " (w=", size, " h=", size, ")"))
       svg(session$userData$outfile_svg, width=size/72, height=size/72, pointsize=1)
-      data = tlx_df %>% dplyr::filter(Rname %in% paste0("chr", c(1:22,"X", "Y")))
       par(cex=5)
-      data
-      plot_circos(data, hits_df)
+      plot_circos(data=data_df, cytoband_path=cytoband_path, hits=hits_df, links=links_df)
+      table(tlx_df$Rname=="chrM")
+      table(data_df$chrom=="chrM")
       dev.off()
 
       print("Finished")

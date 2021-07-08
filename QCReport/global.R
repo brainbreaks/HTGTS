@@ -19,8 +19,9 @@ strand_map = c("-1"="+", "1"="-")
 # offtargets_df = readr::read_tsv("data/offtargets.tsv")
 # setwd("/home/s215v/Workspace/HTGTS/QCReport")
 genomes_path = "genomes"
+genomes_path = file.path("..", genomes_path)
 # genomes_path = Sys.getenv(x="GENOME_DB", unset=".")
-repeatmasker_path = file.path("..", genomes_path, "hg19", "annotation/ucsc_repeatmasker.tsv")
+repeatmasker_path = file.path(genomes_path, "hg19", "annotation/ucsc_repeatmasker.tsv")
 repeatmasker_df = readr::read_tsv(repeatmasker_path, col_names=names(repeatmasker_cols$cols), col_types=repeatmasker_cols, skip=1) %>%
   dplyr::select(repeatmasker_chrom, repeatmasker_start, repeatmasker_end, repeatmasker_strand, repeatmasker_name, repeatmasker_class, repeatmasker_family) %>%
   dplyr::mutate(repeatmasker_id=1:n())
