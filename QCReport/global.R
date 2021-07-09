@@ -12,8 +12,6 @@ source("graphics.R")
 options(shiny.maxRequestSize=5*1024^3)
 options(shiny.sanitize.errors = TRUE)
 
-strand_map = c("-1"="+", "1"="-")
-
 # baits_df = readr::read_tsv("data/baits.tsv")
 # samples_df = readr::read_tsv("data/samples.tsv")
 # offtargets_df = readr::read_tsv("data/offtargets.tsv")

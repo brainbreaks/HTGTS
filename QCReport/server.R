@@ -39,7 +39,6 @@ server <- function(input, output, session) {
     exclude_repeats = shiny::isolate(input$exclude_repeats)
     exclude_bait_region = shiny::isolate(input$exclude_bait_region)
     bait_region = shiny::isolate(input$bait_region)
-    exclude_offtargets = shiny::isolate(input$exclude_offtargets)
     offtargets = shiny::isolate(input$offtargets)
     extsize = shiny::isolate(input$extsize)
     qvalue = shiny::isolate(input$qvalue)
@@ -59,7 +58,6 @@ server <- function(input, output, session) {
       # junsize = 300
       # exclude_repeats = F
       # exclude_bait_region = T
-      # exclude_offtargets = T
       # bait_region = 500000
       # extsize = 2000
       # qvalue = 0.001
@@ -96,7 +94,7 @@ server <- function(input, output, session) {
 
       # TODO: should offtargets be removed from TLX before calcluating hits?
       offtargets_ranges = NULL
-      if(!is.null(exclude_offtargets)) {
+      if(!is.null(offtargets)) {
         print("Search for offtargets")
         tlx_df = tlx_df %>% dplyr::filter(!(B_Rname==Rname & (abs(B_Rstart-Rstart)<=bait_region/2 | abs(Rend-B_Rend)<=bait_region/2)))
         tlx_ranges = GenomicRanges::makeGRangesFromDataFrame(tlx_df %>% dplyr::mutate(seqnames=Rname, start=Rstart, end=Rend), keep.extra.columns=T, ignore.strand=T)
@@ -115,7 +113,7 @@ server <- function(input, output, session) {
       print(paste0("Convert to BED (", f_bed, ")"))
       tlx_df %>%
         dplyr::ungroup() %>%
-        dplyr::mutate(bed_start=ifelse(Strand=="1", Junction-junsize, Junction-1), bed_end=ifelse(Strand=="1", Junction, Junction+junsize-1), bed_strand=strand_map[Strand]) %>%
+        dplyr::mutate(bed_start=ifelse(Strand=="1", Junction-junsize, Junction-1), bed_end=ifelse(Strand=="1", Junction, Junction+junsize-1), bed_strand=ifelse(Strand=="1", "-", "+")) %>%
         dplyr::select(Rname, bed_start, bed_end, Qname, 0, bed_strand) %>%
         readr::write_tsv(file=f_bed, na="", col_names=F)
       print("Running MACS")
@@ -129,7 +127,7 @@ server <- function(input, output, session) {
       }
       tlx_ranges = GenomicRanges::makeGRangesFromDataFrame(tlx_df %>% dplyr::mutate(seqnames=Rname, start=Rstart, end=Rend), keep.extra.columns=T, ignore.strand=T)
       links_df = as.data.frame(IRanges::mergeByOverlaps(macs_ranges, tlx_ranges)) %>%
-        # dplyr::mutate(chrom1=macs_chrom, start1=macs_start, end1=macs_end) %>%
+        dplyr::mutate(chrom1=macs_chrom, start1=macs_start, end1=macs_end) %>%
         dplyr::group_by(chrom1, start1, end1) %>%
         dplyr::summarize(chrom2=B_Rname[1], start2=floor(mean(B_Rstart)), end2=floor(mean(B_Rend)), color=ifelse(any(macs_is_offtarget), "#F46D43FF", "#74ADD180")) %>%
         dplyr::ungroup()
@@ -143,8 +141,6 @@ server <- function(input, output, session) {
       svg(session$userData$outfile_svg, width=size/72, height=size/72, pointsize=1)
       par(cex=5)
       plot_circos(data=data_df, cytoband_path=cytoband_path, links=links_df)
-      table(tlx_df$Rname=="chrM")
-      table(data_df$chrom=="chrM")
       dev.off()
 
       print("Finished")

@@ -13,10 +13,10 @@ plot_circos = function(data, cytoband_path, annotations=NULL, links=NULL, circos
   cytoband_df = data.frame(cytoband$chr.len) %>% tibble::rownames_to_column("chrom") %>% dplyr::rename(chrom_length="cytoband.chr.len")
 
   unknown_chroms = list("data (chrom1)"=unique(setdiff(data$chrom, cytoband_df$chrom)))
-  if(!is.null(hits)) {
+  if(!is.null(annotations)) {
     unknown_chroms[["hits (chrom)"]] = unique(setdiff(hits$chrom, cytoband_df$chrom))
   }
-  if(!is.null(hits)) {
+  if(!is.null(links)) {
     unknown_chroms[["links (chrom1)"]] = unique(setdiff(links$chrom1, cytoband_df$chrom))
     unknown_chroms[["links (chrom2)"]] = unique(setdiff(links$chrom2, cytoband_df$chrom))
   }
@@ -28,7 +28,7 @@ plot_circos = function(data, cytoband_path, annotations=NULL, links=NULL, circos
     return()
   }
 
-  links_bw = 1e6
+  links_bw = 2e6
   if(!("color" %in% colnames(links))) {
     links$color = "#F46D4380"
   }
@@ -74,7 +74,6 @@ plot_circos = function(data, cytoband_path, annotations=NULL, links=NULL, circos
           circlize::circos.rect(xleft=region$start, xright=region$end, ybottom=0, ytop=1, col="#FF3333", border="#FF3333")
     })
   }
-  circlize::circos.initializeWithIdeogram(cytoband=cytoband_path, plotType="axis")
   circlize::circos.genomicLink(
     region1=links_sum %>% dplyr::select(chr=chrom1, start=start1, end=end1),
     region2=links_sum %>% dplyr::select(chr=chrom2, start=start2, end=end2),
