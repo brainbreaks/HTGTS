@@ -94,6 +94,8 @@ server <- function(input, output, session) {
         tlx_df$is_bait = F
       }
 
+      # TODO: should offtargets be removed from TLX before calcluating hits?
+      offtargets_ranges = NULL
       if(!is.null(exclude_offtargets)) {
         print("Search for offtargets")
         tlx_df = tlx_df %>% dplyr::filter(!(B_Rname==Rname & (abs(B_Rstart-Rstart)<=bait_region/2 | abs(Rend-B_Rend)<=bait_region/2)))
@@ -101,13 +103,13 @@ server <- function(input, output, session) {
 
         offtargets_df = readr::read_tsv(offtargets$datapath)
         offtargets_ranges = GenomicRanges::makeGRangesFromDataFrame(offtargets_df %>% dplyr::mutate(seqnames=offtarget_chrom, start=offtarget_start, end=offtarget_end), keep.extra.columns=T)
-        tlx_df$is_offtarget = GenomicRanges::countOverlaps(tlx_ranges, offtargets_ranges)>0
+        tlx_df$tlx_is_offtarget = GenomicRanges::countOverlaps(tlx_ranges, offtargets_ranges)>0
       } else {
-        tlx_df$is_offtarget = F
+        tlx_df$tlx_is_offtarget = F
       }
 
       tlx_df = tlx_df %>%
-        dplyr::filter(!is_offtarget & !is_bait & is.na(repeatmasker_class))
+        dplyr::filter(!tlx_is_offtarget & !is_bait & is.na(repeatmasker_class))
 
       f_bed = tempfile()
       print(paste0("Convert to BED (", f_bed, ")"))
@@ -120,25 +122,27 @@ server <- function(input, output, session) {
       macs_df = macs2(name=basename(f_bed), sample=f_bed, extsize=extsize, qvalue=qvalue, slocal=slocal, llocal=llocal, output_dir=dirname(f_bed))
 
       macs_ranges = GenomicRanges::makeGRangesFromDataFrame(macs_df %>% dplyr::mutate(seqnames=macs_chrom, start=macs_start, end=macs_end), keep.extra.columns=T)
+      if(!is.null(offtargets_ranges)) {
+        macs_ranges$macs_is_offtarget = GenomicRanges::countOverlaps(macs_ranges, offtargets_ranges)>0
+      } else {
+        macs_ranges$macs_is_offtarget = F
+      }
       tlx_ranges = GenomicRanges::makeGRangesFromDataFrame(tlx_df %>% dplyr::mutate(seqnames=Rname, start=Rstart, end=Rend), keep.extra.columns=T, ignore.strand=T)
       links_df = as.data.frame(IRanges::mergeByOverlaps(macs_ranges, tlx_ranges)) %>%
-        dplyr::mutate(chrom1=macs_chrom, start1=macs_start, end1=macs_end) %>%
+        # dplyr::mutate(chrom1=macs_chrom, start1=macs_start, end1=macs_end) %>%
         dplyr::group_by(chrom1, start1, end1) %>%
-        dplyr::summarize(chrom2=B_Rname[1], start2=floor(mean(B_Rstart)), end2=floor(mean(B_Rend)), color=ifelse(any(is_offtarget), "#74ADD180", "#F46D4380")) %>%
+        dplyr::summarize(chrom2=B_Rname[1], start2=floor(mean(B_Rstart)), end2=floor(mean(B_Rend)), color=ifelse(any(macs_is_offtarget), "#F46D43FF", "#74ADD180")) %>%
         dplyr::ungroup()
 
       data_df = tlx_df %>%
         dplyr::select(chrom=Rname, start=Rstart, end=Rend, strand=Strand) %>%
         dplyr::ungroup()
 
-      hits_df = macs_df %>%
-        dplyr::select(chrom=macs_chrom, start=macs_start, end=macs_end)
-
       session$userData$outfile_svg = tempfile(fileext=".svg")
       print(paste0("Plot circos ", session$userData$outfile_svg, " (w=", size, " h=", size, ")"))
       svg(session$userData$outfile_svg, width=size/72, height=size/72, pointsize=1)
       par(cex=5)
-      plot_circos(data=data_df, cytoband_path=cytoband_path, hits=hits_df, links=links_df)
+      plot_circos(data=data_df, cytoband_path=cytoband_path, links=links_df)
       table(tlx_df$Rname=="chrM")
       table(data_df$chrom=="chrM")
       dev.off()
