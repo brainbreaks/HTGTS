@@ -34,7 +34,7 @@ RUN http_proxy="${http_proxy}" https_proxy="${https_proxy}" apt-get install -y \
     python3-pip \
     python3-numpy
 
-RUN http_proxy="${http_proxy}" https_proxy="${https_proxy}" install2.r --error --deps TRUE argparser plyr
+RUN http_proxy="${http_proxy}" https_proxy="${https_proxy}" install2.r --error --deps TRUE argparser plyr bedr
 RUN http_proxy="${http_proxy}" https_proxy="${https_proxy}" /usr/local/lib/R/site-library/littler/examples/installBioc.r GenomicRanges BSgenome
 
 # MACS2

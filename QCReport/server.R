@@ -25,8 +25,8 @@ server <- function(input, output, session) {
 
   observeEvent(input$tlx, {
     print("input$tlx")
-    r$tlx_df = readr::read_tsv(input$tlx$datapath, comment="#", skip=16, col_names=names(tlx_cols$cols), col_types=tlx_cols) %>%
-      dplyr::mutate(tlx_id=1:n())
+    r$tlx_df = read_tlx(input$tlx$datapath)
+    r$baits_df = identify_baits(r$tlx_df)
   }, ignoreInit=T)
 
 
@@ -69,8 +69,14 @@ server <- function(input, output, session) {
       cytoband = circlize::read.cytoband(cytoband_path, species=model)
       cytoband_df = data.frame(cytoband$chr.len) %>% tibble::rownames_to_column("chrom") %>% dplyr::rename(chrom_length="cytoband.chr.len")
 
+      #
+      # Filter out chromosomes not found in cytoband file
+      #
       tlx_df = r$tlx_df %>% dplyr::filter(Rname %in% cytoband_df$chrom)
 
+      #
+      # Exclude repeats
+      #
       if(exclude_repeats) {
         print("Search for overlaps with repeats")
         repeatmasker_ranges = GenomicRanges::makeGRangesFromDataFrame(repeatmasker_df %>% dplyr::mutate(seqnames=repeatmasker_chrom, start=repeatmasker_start, end=repeatmasker_end), keep.extra.columns=T)
@@ -85,6 +91,7 @@ server <- function(input, output, session) {
       }
 
 
+      # Exclude bait region (using B_pos columns directly)
       if(exclude_bait_region) {
         print("Search for bait/bait junctions")
         tlx_df = tlx_df %>% dplyr::mutate(is_bait=B_Rname==Rname & (abs(B_Rstart-Rstart)<=bait_region/2 | abs(Rend-B_Rend)<=bait_region/2))
@@ -92,16 +99,38 @@ server <- function(input, output, session) {
         tlx_df$is_bait = F
       }
 
-      # TODO: should offtargets be removed from TLX before calcluating hits?
+      #
+      # Find offtargets
+      #
       offtargets_ranges = NULL
       if(!is.null(offtargets)) {
         print("Search for offtargets")
         tlx_df = tlx_df %>% dplyr::filter(!(B_Rname==Rname & (abs(B_Rstart-Rstart)<=bait_region/2 | abs(Rend-B_Rend)<=bait_region/2)))
-        tlx_ranges = GenomicRanges::makeGRangesFromDataFrame(tlx_df %>% dplyr::mutate(seqnames=Rname, start=Rstart, end=Rend), keep.extra.columns=T, ignore.strand=T)
+        genome_path = file.path(genomes_path, model, paste0(model, ".fa"))
 
-        offtargets_df = readr::read_tsv(offtargets$datapath)
-        offtargets_ranges = GenomicRanges::makeGRangesFromDataFrame(offtargets_df %>% dplyr::mutate(seqnames=offtarget_chrom, start=offtarget_start, end=offtarget_end), keep.extra.columns=T)
-        tlx_df$tlx_is_offtarget = GenomicRanges::countOverlaps(tlx_ranges, offtargets_ranges)>0
+        tlx_ranges = GenomicRanges::makeGRangesFromDataFrame(tlx_df %>% dplyr::mutate(seqnames=Rname, start=Rstart, end=Rend), keep.extra.columns=T, ignore.strand=T)
+        baits_ranges = get_seq(genome_path, GenomicRanges::makeGRangesFromDataFrame(r$baits_df %>% dplyr::mutate(seqnames=bait_chrom, start=bait_start, end=bait_end, strand=bait_strand), keep.extra.columns=T))
+        offtargets_ranges = get_seq(genome_path, read_bed(offtargets$datapath))
+
+        offtarget2bait_df = as.data.frame(offtargets_ranges) %>%
+          dplyr::select(offtarget_chrom=seqnames, offtarget_start=start, offtarget_end=end, offtarget_strand=strand, offtarget_sequence=sequence) %>%
+          tidyr::crossing(as.data.frame(baits_ranges) %>% dplyr::select(dplyr::matches("^bait_"), bait_sequence=sequence))
+        offtarget2bait_df$alignment_score = Biostrings::pairwiseAlignment(offtarget2bait_df$offtarget_sequence, offtarget2bait_df$bait_sequence, type="global", scoreOnly=T)
+        offtarget2bait_df = offtarget2bait_df %>% dplyr::distinct(offtarget_chrom, offtarget_start, offtarget_end, offtarget_strand, .keep_all=T)
+
+        # @todo: Change 100 to something meaningful?
+        tlx_df$tlx_id = 1:nrow(tlx_df)
+        tlx_bait_ranges = GenomicRanges::makeGRangesFromDataFrame(tlx_df %>% dplyr::mutate(seqnames=B_Rname, start=B_Rstart-100, end=B_Rend+100), keep.extra.columns=T, ignore.strand=T)
+        tlx_junc_ranges = GenomicRanges::makeGRangesFromDataFrame(tlx_df %>% dplyr::mutate(seqnames=Rname, start=Rstart-100, end=Rend+100), keep.extra.columns=T, ignore.strand=T)
+        offtarget2bait_bait_ranges = GenomicRanges::makeGRangesFromDataFrame(offtarget2bait_df %>% dplyr::mutate(seqnames=bait_chrom, start=bait_start, end=bait_end), keep.extra.columns=T, ignore.strand=T)
+        offtarget2bait_offt_ranges = GenomicRanges::makeGRangesFromDataFrame(offtarget2bait_df %>% dplyr::mutate(seqnames=offtarget_chrom, start=offtarget_start, end=offtarget_end), keep.extra.columns=T, ignore.strand=T)
+
+        tlx_offtarget_ids = as.data.frame(IRanges::findOverlaps(tlx_bait_ranges, offtarget2bait_bait_ranges)) %>%
+          dplyr::rename(tlx_id="queryHits", o2b_id="subjectHits") %>%
+          dplyr::inner_join(as.data.frame(IRanges::findOverlaps(tlx_junc_ranges, offtarget2bait_offt_ranges)), by=c(tlx_id="queryHits", o2b_id="subjectHits")) %>%
+          .$tlx_id
+
+        tlx_df$tlx_is_offtarget = tlx_df$tlx_id %in% tlx_offtarget_ids
       } else {
         tlx_df$tlx_is_offtarget = F
       }
