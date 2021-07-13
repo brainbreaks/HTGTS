@@ -33,6 +33,11 @@ ui <- shiny::fluidPage(
       type="tabs",
       shiny::tabsetPanel(
         shiny::tabPanel(
+          "Junctions",
+          shiny::plotOutput("junctions_report") %>% shinycssloaders::withSpinner(color="#0dc5c1"),
+            shiny::actionButton("junctions_calculate", label="Calculate")
+        ),
+        shiny::tabPanel(
           "Overview",
           shiny::plotOutput("circos_output") %>% shinycssloaders::withSpinner(color="#0dc5c1"),
             shiny::actionButton("circos_calculate", label="Calculate")

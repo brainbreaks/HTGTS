@@ -8,22 +8,7 @@ macs_cols = cols(
   macs_pileup=col_double(), macs_pvalue=col_double(), macs_fc=col_double(), macs_qvalue=col_double(), macs_name=col_character(), macs_comment=col_character()
 )
 
-tlx_cols = cols(
-  Qname=readr::col_character(), JuncID=readr::col_character(), Rname=readr::col_character(), Junction=readr::col_double(),
-  Strand=readr::col_character(), Rstart=readr::col_double(), Rend=readr::col_double(),
-  B_Rname=readr::col_character(), B_Rstart=readr::col_double(), B_Rend=readr::col_double(), B_Strand=readr::col_double(),
-  B_Qstart=readr::col_double(), B_Qend=readr::col_double(), Qstart=readr::col_double(), Qend=readr::col_double(), Qlen=readr::col_double(),
-  B_Cigar=readr::col_character(), Cigar=readr::col_character(), Seq=readr::col_character(), J_Seq=readr::col_character(), Barcode=readr::col_logical(),
-  unaligned=readr::col_double(), baitonly=readr::col_double(), uncut=readr::col_double(), misprimed=readr::col_double(), freqcut=readr::col_double(),
-  largegap=readr::col_double(), mapqual=readr::col_double(), breaksite=readr::col_double(), sequential=readr::col_double(), repeatseq=readr::col_double(), duplicate=readr::col_double()
-)
-
-read_tlx = function(path) {
-  readr::read_tsv(path, comment="#", skip=16, col_names=names(tlx_cols$cols), col_types=tlx_cols) %>%
-      dplyr::mutate(tlx_id=1:n())
-}
-
-read_bed = function(path) {
+bed_read = function(path) {
   bed = rtracklayer::import.bed(path)
   GenomicRanges::start(bed) = GenomicRanges::start(bed)-1
   bed
@@ -65,21 +50,8 @@ repeatmasker_cols = cols(
   repeatmasker_id=readr::col_character()
 )
 
-identify_baits = function(tlx_df, size=20) {
-  # @todo: Check this arithmetic with "-" strand break
-  tlx_df %>%
-    dplyr::group_by(B_Rname, B_Rstart, B_Rend, B_Strand) %>%
-    dplyr::mutate(n=n(), B_RstartGroup=floor(B_Rstart/junsize)*junsize) %>%
-    dplyr::group_by(B_RstartGroup) %>%
-    dplyr::arrange(dplyr::desc(n)) %>%
-    dplyr::slice(1) %>%
-    dplyr::ungroup() %>%
-    dplyr::mutate(bait_strand=ifelse(B_Strand=="1", "+", "-"), bait_start=ifelse(bait_strand=="+", B_Rend-2, B_Rstart+2), bait_end=bait_start+size-1) %>%
-    dplyr::select(bait_chrom=B_Rname, bait_strand, bait_start, bait_end)
-}
 
-
-macs2 = function(name, sample, control=NULL, qvalue=0.01, extsize=200, slocal=1000, output_dir="data/macs2", llocal=10000000) {
+macs2 = function(name, sample, control=NULL, qvalue=0.01, extsize=200, slocal=1000, llocal=10000000, output_dir="data/macs2") {
   bed_sample = paste("-t", sample)
   bed_control = ifelse(is.null(control), "", paste("-c", control))
 
@@ -90,4 +62,28 @@ macs2 = function(name, sample, control=NULL, qvalue=0.01, extsize=200, slocal=10
   readr::read_tsv(paste0(output_dir, "/", name, "_peaks.xls"), comment="#", col_names=names(macs_cols$cols), col_types=macs_cols) %>%
     dplyr::slice(-1) %>%
     dplyr::select(-macs_comment)
+}
+
+join_offtarget2bait = function(offtargets_df, baits_df, genome_path) {
+  baits_ranges = GenomicRanges::makeGRangesFromDataFrame(baits_df %>% dplyr::mutate(seqnames=bait_chrom, start=bait_start, end=bait_end, strand=bait_strand))
+  offtargets_ranges = GenomicRanges::makeGRangesFromDataFrame(offtargets_df %>% dplyr::mutate(seqnames=offtarget_chrom, start=offtarget_start, end=offtarget_end, strand=offtarget_strand))
+
+  # Combine baits and offtarget ranges so that sequences can be retrieve in a single call to bedtools (performance optimization)
+  ranges_seq = get_seq(fasta=genome_path, ranges=BiocGenerics::append(baits_ranges, offtargets_ranges))
+  baits_df$bait_sequence = ranges_seq$sequence[1:length(baits_ranges)]
+  offtargets_df$offtarget_sequence = ranges_seq$sequence[-(1:length(baits_ranges))]
+
+  offtarget2bait_df = offtargets_df %>%
+    tidyr::crossing(baits_df) %>%
+    dplyr::mutate(bait2offtarget_alignment=Biostrings::pairwiseAlignment(offtarget_sequence, bait_sequence, type="global", scoreOnly=T)) %>%
+    dplyr::arrange(bait2offtarget_alignment) %>%
+    dplyr::distinct(offtarget_chrom, offtarget_start, offtarget_end, offtarget_strand, .keep_all=T)
+
+  offtarget2bait_df
+}
+
+offtargets_read = function(path) {
+  offtargets_ranges = bed_read(path)
+  as.data.frame(offtargets_ranges) %>%
+    dplyr::select(offtarget_chrom=seqnames, offtarget_start=start, offtarget_end=end, offtarget_strand=strand)
 }

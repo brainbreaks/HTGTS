@@ -52,7 +52,7 @@ plot_circos = function(data, cytoband_path, annotations=NULL, links=NULL, circos
   circos_yaxis = seq(floor(circos_ylim[1]), ceiling(circos_ylim[2]), 1)
   circos_yaxis_pal = circlize::colorRamp2(seq(floor(circos_ylim[1]), ceiling(circos_ylim[2]), length.out=5), rev(RColorBrewer::brewer.pal(5, "Blues")), transparency=0.8)
 
-  circlize::circos.initializeWithIdeogram(cytoband=cytoband_path, plotType="axis")
+  circlize::circos.initializeWithIdeogram(cytoband=cytoband_path)
   circlize::circos.genomicTrack(data_sum, bg.border=NA, ylim=circos_ylim,
       panel.fun = function(region, value, ...) {
         if(circlize::get.current.chromosome() == cytoband$chromosome[1]) {
