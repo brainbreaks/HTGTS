@@ -49,14 +49,18 @@ plot_circos = function(data, cytoband_path, annotations=NULL, links=NULL, circos
     data.frame()
 
   circos_ylim = c(0, max(data_sum$count_log10))
-  circos_yaxis = seq(floor(circos_ylim[1]), ceiling(circos_ylim[2]), 1)
-  circos_yaxis_pal = circlize::colorRamp2(seq(floor(circos_ylim[1]), ceiling(circos_ylim[2]), length.out=5), rev(RColorBrewer::brewer.pal(5, "Blues")), transparency=0.8)
+  circos_ylabels = sort(expand.grid(power=10**seq(0, ceiling(circos_ylim[2]), 1), prec=c(1, 2, 5)) %>% dplyr::mutate(y=power*prec) %>% .$y)
+  circos_ylabels = circos_ylabels[circos_ylabels>=2 & circos_ylabels<=10**max(data_sum$count_log10)]
+  circos_yaxis = log10(circos_ylabels)
+  circos_yaxis_pal = circlize::colorRamp2(circos_yaxis, colorRampPalette(rev(RColorBrewer::brewer.pal(5, "Blues")))(length(circos_yaxis)), transparency=0.8)
 
-  circlize::circos.initializeWithIdeogram(cytoband=cytoband_path)
+
+  circos.par("gap.degree" = c(rep(1, nrow(cytoband_df)-1), 5))
+  circlize::circos.initializeWithIdeogram(cytoband=cytoband_path, plotType = c("axis", "labels"))
   circlize::circos.genomicTrack(data_sum, bg.border=NA, ylim=circos_ylim,
       panel.fun = function(region, value, ...) {
         if(circlize::get.current.chromosome() == cytoband$chromosome[1]) {
-          circlize::circos.yaxis(at=circos_yaxis, labels.cex=0.4)
+          circlize::circos.yaxis(at=circos_yaxis, labels=circos_ylabels, labels.cex=0.4)
         }
         if(length(circos_yaxis)>1) {
           for(ax in 2:length(circos_yaxis)) {
