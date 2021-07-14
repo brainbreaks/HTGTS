@@ -8,6 +8,12 @@ scale_breaks = function(x) {
     breaks
 }
 
+scale_breaks_sub1k = function(x) {
+  breaks = seq(0, max(x), 500)
+  names(breaks) = paste0(breaks/1e3, "")
+  breaks
+}
+
 plot_venn = function(x, pallete="Pastel2", size=500) {
   cex = size/30
   plot.new()

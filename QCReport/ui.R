@@ -16,17 +16,20 @@ ui <- shiny::fluidPage(
       shiny::numericInput("qvalue", label="MACS2 qvalue", value=0.001),
 
       shiny::actionLink("advanced_hide", "advanced options"),
-      shiny::wellPanel(id="advanced_panel",
-        shiny::checkboxInput("exclude_repeats", label="Exclude repeats", value=T),
-        shiny::fluidRow(
-          shiny::column(2, shiny::checkboxInput("exclude_bait_region", label="Exclude bait region", value=T)),
-          shiny::column(10, shiny::numericInput("bait_region", label="", value=500000))
-        ),
-        shiny::numericInput("junsize", label="Junction size", value=300),
-        shiny::numericInput("extsize", label="extsize", value=2000),
-        shiny::numericInput("slocal", label="slocal", value=1000),
-        shiny::numericInput("llocal", label="llocal", value=10000000)
+      shinyjs::hidden(
+        shiny::wellPanel(id="advanced_panel",
+          shiny::checkboxInput("exclude_repeats", label="Exclude repeats", value=T),
+          shiny::fluidRow(
+            shiny::column(2, shiny::checkboxInput("exclude_bait_region", label="Exclude bait region", value=T)),
+            shiny::column(10, shiny::numericInput("bait_region", label="", value=500000))
+          ),
+          shiny::numericInput("junsize", label="Junction size", value=300),
+          shiny::numericInput("extsize", label="extsize", value=2000),
+          shiny::numericInput("slocal", label="slocal", value=1000),
+          shiny::numericInput("llocal", label="llocal", value=10000000)
+        )
       ),
+      shiny::HTML("<br />"),
       shiny::actionButton("calculate", label="Calculate")
     ),
 
@@ -35,7 +38,11 @@ ui <- shiny::fluidPage(
       shiny::tabsetPanel(
         shiny::tabPanel(
           "Junctions",
-          shiny::plotOutput("junctions_venn") %>% shinycssloaders::withSpinner(color="#0dc5c1")
+          shiny::plotOutput("junctions_venn")
+        ),
+        shiny::tabPanel(
+          "Repeats",
+          shiny::plotOutput("repeats_summary")
         ),
         shiny::tabPanel(
           "Overview",

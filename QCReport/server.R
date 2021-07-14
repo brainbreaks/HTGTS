@@ -6,6 +6,8 @@ library(BSgenome)
 library(Gviz)
 library(stringr)
 library(shinyjs)
+library(ggplot2)
+library(forcats)
 source("utils.R")
 source("tlx.R")
 source("graphics.R")
@@ -15,15 +17,24 @@ log = function(x) {
 }
 
 server <- function(input, output, session) {
+  # @todo: properly load default
+  load(paste0("tmp/hg19_repeatmasker_df.rda"))
   r <- shiny::reactiveValues(
     hidden_options=T,
     baits_df=NULL,
     tlx_df=NULL,
-    offtargets_df=NULL
+    offtargets_df=NULL,
+    repeatmasker_df=repeatmasker_df
   )
 
   observeEvent(input$advanced_hide, {
     shinyjs::toggle(id="advanced_panel")
+  })
+
+  observeEvent(input$genome, {
+    print("input$genome")
+    load(paste0("tmp/", input$genome, "_repeatmasker_df.rda"))
+    r$repeatmasker_df = repeatmasker_df
   })
 
   observeEvent(input$tlx, {
@@ -65,7 +76,7 @@ server <- function(input, output, session) {
       "\nllocal=", llocal,
       "\nmodel=", model
     ))
-    #
+
     # setwd("/home/s215v/Workspace/HTGTS/QCReport")
     # r = list()
     # input = list(
@@ -84,7 +95,7 @@ server <- function(input, output, session) {
 
     tlx_df = r$tlx_df %>% dplyr::filter(Rname %in% cytoband_df$chrom)
     tlx_df = tlx_mark_bait_chromosome(tlx_df)
-    tlx_df = tlx_mark_repeats(tlx_df, repeatmasker_df)
+    tlx_df = tlx_mark_repeats(tlx_df, r$repeatmasker_df)
     tlx_df = tlx_mark_bait_junctions(tlx_df, bait_region)
 
     offtarget2bait_df = NULL
@@ -104,7 +115,11 @@ server <- function(input, output, session) {
     }
 
     output$junctions_venn = renderImage({
-      size = session$clientData$output_junctions_venn_width
+      width = session$clientData$output_junctions_venn_width
+      height = 960
+
+      print(session$clientData$output_junctions_venn_width)
+      print(session$clientData$output_junctions_venn_height)
 
       cat(file=stderr(), "output$junctions_venn")
       venn_offtarget = list()
@@ -116,16 +131,50 @@ server <- function(input, output, session) {
       }
 
       session$userData$junctions_venn_svg = tempfile(fileext=".svg")
-      print(paste0("Plot venn ", session$userData$junctions_venn_svg, " (w=", size, " h=", size, ")"))
+      print(paste0("Plot venn ", session$userData$junctions_venn_svg, " (w=", width, " h=", height, ")"))
 
-      svg(session$userData$junctions_venn_svg, width=size/72, height=size/72, pointsize=1)
-      plot_venn(venn_offtarget, size=size)
+      svg(session$userData$junctions_venn_svg, width=width/72, height=height/72, pointsize=1)
+      plot_venn(venn_offtarget, size=width)
       dev.off()
 
-      list(src=normalizePath(session$userData$junctions_venn_svg), contentType='image/svg+xml', width=size, height=size, alt="Junctions venn")
+      list(src=normalizePath(session$userData$junctions_venn_svg), contentType='image/svg+xml', width=width, height=height, alt="Junctions venn")
     }, deleteFile=F)
 
+    output$repeats_summary = renderImage({
+      width = session$clientData$output_repeats_summary_width
+      height = 960
 
+      cat(file=stderr(), "repeats_summary")
+
+
+      session$userData$repeats_summary_svg = tempfile(fileext=".svg")
+      print(paste0("Plot repeats summary ", session$userData$repeats_summary_svg, " (w=", width, " h=", height, ")"))
+
+      svg(session$userData$repeats_summary_svg, width=width/72, height=height/72, pointsize=1)
+      tlx_df.ggplot = dplyr::bind_rows(
+        tlx_df %>% dplyr::mutate(filter="All chromosomes"),
+        tlx_df %>% dplyr::mutate(filter="Bait chromosomes") %>% dplyr::filter(tlx_is_bait_chromosome)) %>%
+        tidyr::separate_rows(tlx_repeatmasker_class) %>%
+        dplyr::filter(is.na(tlx_repeatmasker_class) | tlx_repeatmasker_class!="") %>%
+        dplyr::mutate(tlx_repeatmasker_class=ifelse(is.na(tlx_repeatmasker_class), "No repeats", tlx_repeatmasker_class))
+      palette_repeats = tlx_df.ggplot %>%
+        dplyr::distinct(tlx_repeatmasker_class) %>%
+        dplyr::mutate(color=ifelse(tlx_repeatmasker_class=="No repeats", "#CC0000", "#666666")) %>%
+        dplyr::pull(color, tlx_repeatmasker_class)
+      p = ggplot2::ggplot(tlx_df.ggplot) +
+          ggplot2::geom_bar(ggplot2::aes(x=forcats::fct_infreq(tlx_repeatmasker_class), fill=tlx_repeatmasker_class), position="dodge") +
+          ggplot2::coord_flip() +
+          ggplot2::labs(x="RepeatMasker class", y="Junctions overlapping with repeats (x1000)") +
+          ggplot2::facet_wrap(~filter, scales="free") +
+          ggplot2::scale_y_continuous(breaks=scale_breaks_sub1k) +
+          ggplot2::scale_fill_manual(values=palette_repeats, guide="none") +
+          ggplot2::theme_bw(base_size=24) +
+          ggplot2::theme(axis.text.x=ggplot2::element_text(size=16))
+      print(p)
+      dev.off()
+
+      list(src=normalizePath(session$userData$repeats_summary_svg), contentType='image/svg+xml', width=width, height=height, alt="Repeats summary")
+    }, deleteFile=F)
 
     output$circos = renderImage({
       size = pmin(session$clientData$output_circos_width, session$clientData$output_circos_width)
