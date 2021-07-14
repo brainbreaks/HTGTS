@@ -8,7 +8,18 @@ scale_breaks = function(x) {
     breaks
 }
 
-plot_circos = function(data, cytoband_path, annotations=NULL, links=NULL, circos_bw=1e6-1) {
+plot_venn = function(x, pallete="Pastel2", size=500) {
+  cex = size/30
+  plot.new()
+  p = VennDiagram::venn.diagram(
+    x = x, height=size, width=size,
+    margin=0.1,
+    cat.cex=cex, cex=cex,
+    lwd=2, lty='blank', fill=RColorBrewer::brewer.pal(length(x), pallete), cat.fontface="bold", filename=NULL)
+  grid::grid.draw(p)
+}
+
+plot_circos = function(data, cytoband_path, annotations=NULL, links=NULL, circos_bw=1e6-1, cex=5) {
   cytoband = circlize::read.cytoband(cytoband_path)
   cytoband_df = data.frame(cytoband$chr.len) %>% tibble::rownames_to_column("chrom") %>% dplyr::rename(chrom_length="cytoband.chr.len")
 
@@ -24,8 +35,7 @@ plot_circos = function(data, cytoband_path, annotations=NULL, links=NULL, circos
   if(sum(sapply(unknown_chroms, length))>0) {
     unknown_chroms = sapply(unknown_chroms[sapply(unknown_chroms, length)>0], paste, collapse=",")
     unknown_chroms_err = paste("Unknown chromosomes provided when ploting circos plot...\n", paste(paste0(names(unknown_chroms), ":", unknown_chroms), collapse="\n"))
-    writeLines(unknown_chroms_err)
-    return()
+    stop(unknown_chroms_err)
   }
 
   links_bw = 2e6
@@ -36,8 +46,13 @@ plot_circos = function(data, cytoband_path, annotations=NULL, links=NULL, circos
     dplyr::mutate(oldstart1=start1, oldend1=end1, oldstart2=start2, oldend2=end2) %>%
     dplyr::mutate(start1=floor(start1/links_bw)*links_bw, end1=start1+links_bw-1) %>%
     dplyr::mutate(start2=floor(start2/links_bw)*links_bw, end2=start2+links_bw-1) %>%
-    dplyr::distinct(chrom1, start1, end1, chrom2, start2, end2, color, .keep_all=T)
+    dplyr::distinct(chrom1, start1, end1, chrom2, start2, end2, color, .keep_all=T) %>%
+    dplyr::inner_join(cytoband_df %>% setNames(., paste0(colnames(.), "1")), by="chrom1") %>%
+    dplyr::inner_join(cytoband_df %>% setNames(., paste0(colnames(.), "2")), by="chrom2") %>%
+    dplyr::mutate(start1=pmax(1, start1), end1=pmin(end1, chrom_length1)) %>%
+    dplyr::mutate(start2=pmax(1, start2), end2=pmin(end2, chrom_length2))
 
+  # @todo: calculate pileup here
   data_sum = data %>%
     dplyr::group_by(chrom) %>%
     dplyr::do((function(d){
@@ -50,17 +65,18 @@ plot_circos = function(data, cytoband_path, annotations=NULL, links=NULL, circos
 
   circos_ylim = c(0, max(data_sum$count_log10))
   circos_ylabels = sort(expand.grid(power=10**seq(0, ceiling(circos_ylim[2]), 1), prec=c(1, 2, 5)) %>% dplyr::mutate(y=power*prec) %>% .$y)
-  circos_ylabels = circos_ylabels[circos_ylabels>=2 & circos_ylabels<=10**max(data_sum$count_log10)]
+  circos_ylabels = circos_ylabels[circos_ylabels<=10**max(data_sum$count_log10)]
   circos_yaxis = log10(circos_ylabels)
   circos_yaxis_pal = circlize::colorRamp2(circos_yaxis, colorRampPalette(rev(RColorBrewer::brewer.pal(5, "Blues")))(length(circos_yaxis)), transparency=0.8)
 
-
+  # , plotType=c("axis", "labels")
   circos.par("gap.degree" = c(rep(1, nrow(cytoband_df)-1), 5))
-  circlize::circos.initializeWithIdeogram(cytoband=cytoband_path, plotType = c("axis", "labels"))
+  par(cex=cex)
+  circlize::circos.initializeWithIdeogram(cytoband=cytoband_path)
   circlize::circos.genomicTrack(data_sum, bg.border=NA, ylim=circos_ylim,
       panel.fun = function(region, value, ...) {
         if(circlize::get.current.chromosome() == cytoband$chromosome[1]) {
-          circlize::circos.yaxis(at=circos_yaxis, labels=circos_ylabels, labels.cex=0.4)
+          circlize::circos.yaxis(at=circos_yaxis[circos_ylabels>=2], labels=circos_ylabels[circos_ylabels>=2], labels.cex=cex*0.4)
         }
         if(length(circos_yaxis)>1) {
           for(ax in 2:length(circos_yaxis)) {

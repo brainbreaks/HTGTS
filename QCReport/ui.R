@@ -26,7 +26,8 @@ ui <- shiny::fluidPage(
         shiny::numericInput("extsize", label="extsize", value=2000),
         shiny::numericInput("slocal", label="slocal", value=1000),
         shiny::numericInput("llocal", label="llocal", value=10000000)
-      )
+      ),
+      shiny::actionButton("calculate", label="Calculate")
     ),
 
     shiny::mainPanel(
@@ -34,13 +35,11 @@ ui <- shiny::fluidPage(
       shiny::tabsetPanel(
         shiny::tabPanel(
           "Junctions",
-          shiny::plotOutput("junctions_report") %>% shinycssloaders::withSpinner(color="#0dc5c1"),
-            shiny::actionButton("junctions_calculate", label="Calculate")
+          shiny::plotOutput("junctions_venn") %>% shinycssloaders::withSpinner(color="#0dc5c1")
         ),
         shiny::tabPanel(
           "Overview",
-          shiny::plotOutput("circos_output") %>% shinycssloaders::withSpinner(color="#0dc5c1"),
-            shiny::actionButton("circos_calculate", label="Calculate")
+          shiny::plotOutput("circos") %>% shinycssloaders::withSpinner(color="#0dc5c1")
         )
       )
     )
