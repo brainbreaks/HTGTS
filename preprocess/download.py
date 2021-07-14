@@ -103,8 +103,8 @@ def download_raw_genome(url, dest, overwrite=False):
     shutil.rmtree(dest_chromFa)
 
 
-def download_bowtie2_index(url, dest, overwrite=False):
-    if not overwrite and dest and len(glob.glob(os.path.join(dest, "*.bt2"))) > 0:
+def download_bowtie2_index(url, dest, genome, overwrite=False):
+    if not overwrite and dest and len(glob.glob(os.path.join(dest, "{}.*.bt2".format(genome)))) > 0:
         print('Downloading bowtie2 index "{}" ==> "{}". Already exists, skipping...'.format(url, dest))
         return
 
@@ -125,7 +125,7 @@ def download_genome(genome, path):
     download_raw_genome("http://hgdownload.cse.ucsc.edu/goldenPath/{genome}/bigZips/chromFa.tar.gz".format(genome=genome), dest=os.path.join(path, "{genome}/{genome}.fa".format(genome=genome)))
 
     download_file("http://hgdownload.cse.ucsc.edu/goldenPath/{genome}/bigZips/{genome}.chrom.sizes".format(genome=genome), dest=os.path.join(path, "{genome}/annotation/{genome}.chrom.sizes".format(genome=genome)))
-    download_bowtie2_index("https://genome-idx.s3.amazonaws.com/bt/{genome}.zip".format(genome=genome), dest=path)
+    download_bowtie2_index("https://genome-idx.s3.amazonaws.com/bt/{genome}.zip".format(genome=genome), genome=genome, dest=path)
     #
     download_file("http://hgdownload.cse.ucsc.edu/goldenPath/{genome}/bigZips/genes/{genome}.refGene.gtf.gz".format(genome=genome), dest=os.path.join(path, "{genome}.refGene.gtf.gz".format(genome=genome)))
     print("Creating annotation file from {gtf}...".format(gtf=os.path.join(path, "{genome}.refGene.gtf.gz".format(genome=genome))))
