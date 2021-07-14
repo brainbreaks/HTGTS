@@ -31,6 +31,12 @@ tlx_identify_baits = function(tlx_df, size=20, junsize=200) {
     dplyr::select(bait_sample=tlx_sample, bait_chrom=B_Rname, bait_strand, bait_start, bait_end)
 }
 
+tlx_mark_bait_chromosome = function(tlx_df) {
+  tlx_df %>%
+    dplyr::select(-dplyr::matches("tlx_is_bait_chromosome")) %>%
+    dplyr::mutate(tlx_is_bait_chromosome=B_Rname==Rname)
+}
+
 tlx_mark_bait_junctions = function(tlx_df, bait_region) {
   tlx_df %>%
     dplyr::select(-dplyr::matches("tlx_is_bait_junction")) %>%
@@ -70,7 +76,7 @@ tlx_mark_repeats = function(tlx_df, repeatmasker_df) {
     dplyr::select(-queryHits)
 }
 
-tlx_macs2 = function(tlx_df, name=NULL, qvalue=0.01, extsize=200, slocal=1000, llocal=10000000, exclude_bait_region=F, exclude_repeats=F, exclude_offtargets=F) {
+tlx_macs2 = function(tlx_df, name=NULL, junsize=300, qvalue=0.01, extsize=200, slocal=1000, llocal=10000000, exclude_bait_region=F, exclude_repeats=F, exclude_offtargets=F) {
   if(exclude_offtargets && !("tlx_is_offtarget" %in% colnames(tlx_df))) {
     stop("tlx_is_offtarget is not found in tlx data frame")
   }
