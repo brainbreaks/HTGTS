@@ -16,13 +16,14 @@ options(shiny.sanitize.errors = TRUE)
 # samples_df = readr::read_tsv("data/samples.tsv")
 # offtargets_df = readr::read_tsv("data/offtargets.tsv")
 # setwd("/home/s215v/Workspace/HTGTS/QCReport")
-genomes_path = "genomes"
-genomes_path = file.path("..", genomes_path)
+# genomes_path = file.path("..", genomes_path)
 # genomes_path = Sys.getenv(x="GENOME_DB", unset=".")
-repeatmasker_path = file.path(genomes_path, "hg19", "annotation/ucsc_repeatmasker.tsv")
-repeatmasker_df = readr::read_tsv(repeatmasker_path, col_names=names(repeatmasker_cols$cols), col_types=repeatmasker_cols, skip=1) %>%
-  dplyr::select(repeatmasker_chrom, repeatmasker_start, repeatmasker_end, repeatmasker_strand, repeatmasker_name, repeatmasker_class, repeatmasker_family) %>%
-  dplyr::mutate(repeatmasker_id=1:n())
+# genomes_path = "genomes"
+genomes_path = "../genomes"
+# for(g in c("mm9", "mm10", "hg19")) {
+#   repeatmasker_df = repeatmasker_read(file.path(genomes_path, g, "annotation/ucsc_repeatmasker.tsv"))
+#   save(repeatmasker_df, file=paste0("tmp/", g, "_repeatmasker_df.rda"))
+# }
 
 
 # repeatmasker_ranges = GenomicRanges::makeGRangesFromDataFrame(repeatmasker_df %>% dplyr::mutate(seqnames=repeatmasker_chrom, start=repeatmasker_start, end=repeatmasker_end), keep.extra.columns=T)

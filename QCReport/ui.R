@@ -10,7 +10,9 @@ ui <- shiny::fluidPage(
 
   shiny::sidebarLayout(
     shiny::sidebarPanel(
-      shiny::fileInput("tlx", label="TLX file", placeholder = "No file selected"),
+      # shiny::fileInput("tlx", label="TLX file", placeholder = "No file selected"),
+      shiny::uiOutput("tlx_uploads"),
+
       shiny::fileInput("offtargets", label="Offtargets file", placeholder = "No file selected"),
       shiny::selectInput("model", label="Model", choices=c("hg19", "mm10")),
       shiny::numericInput("qvalue", label="MACS2 qvalue", value=0.001),
@@ -23,6 +25,7 @@ ui <- shiny::fluidPage(
             shiny::column(2, shiny::checkboxInput("exclude_bait_region", label="Exclude bait region", value=T)),
             shiny::column(10, shiny::numericInput("bait_region", label="", value=500000))
           ),
+          shiny::numericInput("breaksite_size", label="breaksite_size size", value=19),
           shiny::numericInput("junsize", label="Junction size", value=300),
           shiny::numericInput("extsize", label="extsize", value=2000),
           shiny::numericInput("slocal", label="slocal", value=1000),
@@ -43,6 +46,10 @@ ui <- shiny::fluidPage(
         shiny::tabPanel(
           "Repeats",
           shiny::plotOutput("repeats_summary")
+        ),
+        shiny::tabPanel(
+          "Homology profile",
+          shiny::plotOutput("homology")
         ),
         shiny::tabPanel(
           "Overview",

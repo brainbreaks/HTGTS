@@ -3,6 +3,10 @@ library(dplyr)
 library(readr)
 library(bedr)
 
+log = function(...) {
+  cat(file=stderr(), paste0(">>>", ..., "\n"))
+}
+
 macs_cols = cols(
   macs_chrom=col_character(), macs_start=col_double(), macs_end=col_double(), macs_length=col_character(), macs_summit_abs=col_double(),
   macs_pileup=col_double(), macs_pvalue=col_double(), macs_fc=col_double(), macs_qvalue=col_double(), macs_name=col_character(), macs_comment=col_character()
@@ -21,6 +25,22 @@ get_seq = function(fasta, ranges) {
     start=as.numeric(GenomicRanges::start(ranges))-1,
     end=as.numeric(GenomicRanges::end(ranges)),
     strand=as.character(GenomicRanges::strand(ranges))) %>%
+    dplyr::mutate(name="", score=0) %>%
+    dplyr::select(chr, start, end, name, score, strand)
+  bed_df.order = with(bed_df, order(chr, start, end, strand))
+  res = bedr::get.fasta(bed_df[bed_df.order,], fasta=fasta, strand=T, check.zero.based=F, check.chr=F, check.valid=F, check.sort=T, check.merge=F)
+  ranges$sequence = res$sequence[match(1:nrow(bed_df), bed_df.order)]
+
+  ranges
+}
+
+
+get_seq2 = function(fasta, chrom, start, end, strand) {
+  bed_df = data.frame(
+    chr=chrom,
+    start=start-1,
+    end=end,
+    strand=strand) %>%
     dplyr::mutate(name="", score=0) %>%
     dplyr::select(chr, start, end, name, score, strand)
   bed_df.order = with(bed_df, order(chr, start, end, strand))
@@ -49,7 +69,12 @@ repeatmasker_cols = cols(
   repeatmasker_repLeft=readr::col_character(),
   repeatmasker_id=readr::col_character()
 )
-
+repeatmasker_read = function(path) {
+  readr::read_tsv(path, col_names=names(repeatmasker_cols$cols), col_types=repeatmasker_cols, skip=1) %>%
+    dplyr::select(repeatmasker_chrom, repeatmasker_start, repeatmasker_end, repeatmasker_strand, repeatmasker_name, repeatmasker_class, repeatmasker_family) %>%
+    dplyr::filter(repeatmasker_chrom %in% paste0("chr", c(1:99, "X", "Y"))) %>%
+    dplyr::mutate(repeatmasker_id=1:n())
+}
 
 macs2 = function(name, sample, control=NULL, qvalue=0.01, extsize=200, slocal=1000, llocal=10000000, output_dir="data/macs2") {
   bed_sample = paste("-t", sample)
@@ -77,7 +102,8 @@ join_offtarget2bait = function(offtargets_df, baits_df, genome_path) {
     tidyr::crossing(baits_df) %>%
     dplyr::mutate(bait2offtarget_alignment=Biostrings::pairwiseAlignment(offtarget_sequence, bait_sequence, type="global", scoreOnly=T)) %>%
     dplyr::arrange(bait2offtarget_alignment) %>%
-    dplyr::distinct(offtarget_chrom, offtarget_start, offtarget_end, offtarget_strand, .keep_all=T)
+    dplyr::distinct(bait_sample, offtarget_chrom, offtarget_start, offtarget_end, offtarget_strand, .keep_all=T) %>%
+    data.frame()
 
   offtarget2bait_df
 }
