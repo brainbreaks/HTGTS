@@ -13,6 +13,7 @@ source("utils.R")
 source("tlx.R")
 source("graphics.R")
 
+
 server <- function(input, output, session) {
   # @todo: properly load default
   load(paste0("tmp/hg19_repeatmasker_df.rda"))
@@ -37,46 +38,56 @@ server <- function(input, output, session) {
   # })
 
 
-  output$tlx_uploads = shiny::insertUI("tlx_uploads", where="afterEnd", ui={
-    log("output$tlx_uploads")
-    # req(r$tlx_num)
+  observeEvent(input$tlx_add, {
+    log("input$tlx_add")
 
-    tlx_num = r$tlx_num
-    observers = isolate(r$observers)
+    shiny::insertUI("#tlx_files", where="beforeEnd", ui=fileInput("upload", "", multiple=T))
 
-    for(i in 1:tlx_num) {
-      if(!(paste0("tlx", i) %in% names(observers))) {
-        observers[[paste0("tlx", i)]] = observeEvent(input[[paste0("tlx", i)]], {
-          log("input$tlx", i)
-          inp = input[[paste0("tlx", i)]]
-          r$tlx_df = tlx_read(inp$datapath, sample=basename(inp$name))
-          log("TLX file ", basename(inp$name), " processed...")
-        }, ignoreInit=T, autoDestroy=T)
+    r$tlx_num = r$tlx_num + 1
+  }, ignoreInit=T)
 
-        observers[[paste0("tlx_add", i)]] = observeEvent(input[[paste0("tlx_add", i)]], {
-          log("input$tlx_add", i)
-          r$tlx_num = tlx_num + 1
-        }, ignoreInit=T)
-      }
-    }
 
-    r$observers
+  observeEvent(input$tlx_del, {
+    log("tlx_del")
 
-    do.call(fluidRow, lapply(1:tlx_num, function(i) {
-      log("tlx", i)
+    shiny::removeUI(selector="#tlx_files .shiny-input-container:last-child")
+  }, ignoreInit=T)
 
-      inpf = shiny::fileInput(paste0("tlx", i), label="", placeholder="No file selected")
-      if(i==tlx_num) {
-        inp_add = shiny::actionButton(paste0("tlx_add", i), label="+")
-        inp_del = shiny::actionButton(paste0("tlx_del", i), label="-")
-
-        if(i > 1) return(list(shiny::column(10, inpf),  shiny::column(1, inp_add), shiny::column(1, inp_del)))
-        else return(list(shiny::column(10, inpf),  shiny::column(2, inp_add)))
-      } else {
-        return(shiny::column(10, inpf))
-      }
-    }))
-  })
+  # output$tlx_uploads = shiny::insertUI("tlx_uploads", where="afterEnd", ui={
+  #   log("output$tlx_uploads")
+  #   # req(r$tlx_num)
+  #
+  #   tlx_num = r$tlx_num
+  #   observers = isolate(r$observers)
+  #
+  #   for(i in 1:tlx_num) {
+  #     if(!(paste0("tlx", i) %in% names(observers))) {
+  #       observers[[paste0("tlx", i)]] = observeEvent(input[[paste0("tlx", i)]], {
+  #         log("input$tlx", i)
+  #         inp = input[[paste0("tlx", i)]]
+  #         r$tlx_df = tlx_read(inp$datapath, sample=basename(inp$name))
+  #         log("TLX file ", basename(inp$name), " processed...")
+  #       }, ignoreInit=T, autoDestroy=T)
+  #     }
+  #   }
+  #
+  #   r$observers
+  #
+  #   do.call(fluidRow, lapply(1:tlx_num, function(i) {
+  #     log("tlx", i)
+  #
+  #     inpf = shiny::fileInput(paste0("tlx", i), label="", placeholder="No file selected")
+  #     if(i==tlx_num) {
+  #       inp_add = shiny::actionButton(paste0("tlx_add", i), label="+")
+  #       inp_del = shiny::actionButton(paste0("tlx_del", i), label="-")
+  #
+  #       if(i > 1) return(list(shiny::column(10, inpf),  shiny::column(1, inp_add), shiny::column(1, inp_del)))
+  #       else return(list(shiny::column(10, inpf),  shiny::column(2, inp_add)))
+  #     } else {
+  #       return(shiny::column(10, inpf))
+  #     }
+  #   }))
+  # })
 
 
 

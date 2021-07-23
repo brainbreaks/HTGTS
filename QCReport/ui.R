@@ -10,8 +10,9 @@ ui <- shiny::fluidPage(
 
   shiny::sidebarLayout(
     shiny::sidebarPanel(
-      # shiny::fileInput("tlx", label="TLX file", placeholder = "No file selected"),
-      shiny::uiOutput("tlx_uploads"),
+      shiny::span(id="tlx_files", shiny::fileInput("tlx1", label="", placeholder="No file selected")),
+      shiny::actionButton("tlx_add", label="+"),
+      shiny::actionButton("tlx_del", label="-"),
 
       shiny::fileInput("offtargets", label="Offtargets file", placeholder = "No file selected"),
       shiny::selectInput("model", label="Model", choices=c("hg19", "mm10")),
