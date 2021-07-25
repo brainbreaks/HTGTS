@@ -8,7 +8,6 @@ library(Gviz)
 library(stringr)
 library(ggplot2)
 library(forcats)
-library(reactlog)
 source("utils.R")
 source("tlx.R")
 source("graphics.R")
@@ -16,79 +15,70 @@ source("graphics.R")
 
 server <- function(input, output, session) {
   # @todo: properly load default
-  load(paste0("tmp/hg19_repeatmasker_df.rda"))
   r <- shiny::reactiveValues(
     hidden_options=T,
     baits_df=NULL,
     tlx_df=NULL,
     offtargets_df=NULL,
-    tlx_num=1,
-    repeatmasker_df=repeatmasker_df,
+    tlx_num=0,
+    repeatmasker_df=NULL,
     observers=list()
   )
+
 
   observeEvent(input$advanced_hide, {
     shinyjs::toggle(id="advanced_panel")
   })
 
-  # observeEvent(input$genome, {
-  #   log("input$genome")
-  #   # load(paste0("tmp/", input$genome, "_repeatmasker_df.rda"))
-  #   # r$repeatmasker_df = repeatmasker_df
-  # })
+  observeEvent(r$tlx_df, {
+    log("r$tlx_df")
+    r$baits_df = tlx_identify_baits(r$tlx_df)
+  })
 
+  observeEvent(input$genome, {
+    log("input$genome")
+    r$repeatmasker_df = repeatmasker_read(file.path(genomes_path, input$genome, "annotation/ucsc_repeatmasker.tsv"))
+  })
 
   observeEvent(input$tlx_add, {
     log("input$tlx_add")
+    input_id = paste0("tlx", r$tlx_num+1)
+    observer_id = paste0(input_id, "_observer")
 
-    shiny::insertUI("#tlx_files", where="beforeEnd", ui=fileInput("upload", "", multiple=T))
+    shiny::insertUI("#tlx_files", where="beforeEnd", ui=fileInput(input_id, label="", placeholder="No file selected"), immediate=T)
+    print(input_id)
+    session$userData[[observer_id]] = observeEvent(input[[input_id]], {
+      log(observer_id)
+      tlx_df = tlx_read(input[[input_id]]$datapath, sample=basename(input[[input_id]]$name)) %>% dplyr::mutate(source=input[[input_id]]$datapath)
+      tlx_df = tlx_remove_rand_chromosomes(tlx_df)
+      tlx_df = tlx_mark_bait_chromosome(tlx_df)
+      tlx_df = tlx_mark_bait_junctions(tlx_df, isolate(input$bait_region))
+      tlx_df$tlx_is_offtarget = F
+      r$tlx_df = rbind(r$tlx_df, tlx_df)
+    }, ignoreInit=T)
 
     r$tlx_num = r$tlx_num + 1
-  }, ignoreInit=T)
+  }, ignoreNULL=F)
 
 
   observeEvent(input$tlx_del, {
-    log("tlx_del")
+    log("input$tlx_del")
+    input_id = paste0("tlx", r$tlx_num)
+    observer_id = paste0(input_id, "_observer")
 
+    if(!is.null(input[[input_id]])) r$tlx_df = r$tlx_df %>% dplyr::filter(source!=input[[input_id]]$datapath)
+    session$userData[[observer_id]]$destroy()
     shiny::removeUI(selector="#tlx_files .shiny-input-container:last-child")
+
+    r$tlx_num = r$tlx_num - 1
   }, ignoreInit=T)
 
-  # output$tlx_uploads = shiny::insertUI("tlx_uploads", where="afterEnd", ui={
-  #   log("output$tlx_uploads")
-  #   # req(r$tlx_num)
-  #
-  #   tlx_num = r$tlx_num
-  #   observers = isolate(r$observers)
-  #
-  #   for(i in 1:tlx_num) {
-  #     if(!(paste0("tlx", i) %in% names(observers))) {
-  #       observers[[paste0("tlx", i)]] = observeEvent(input[[paste0("tlx", i)]], {
-  #         log("input$tlx", i)
-  #         inp = input[[paste0("tlx", i)]]
-  #         r$tlx_df = tlx_read(inp$datapath, sample=basename(inp$name))
-  #         log("TLX file ", basename(inp$name), " processed...")
-  #       }, ignoreInit=T, autoDestroy=T)
-  #     }
-  #   }
-  #
-  #   r$observers
-  #
-  #   do.call(fluidRow, lapply(1:tlx_num, function(i) {
-  #     log("tlx", i)
-  #
-  #     inpf = shiny::fileInput(paste0("tlx", i), label="", placeholder="No file selected")
-  #     if(i==tlx_num) {
-  #       inp_add = shiny::actionButton(paste0("tlx_add", i), label="+")
-  #       inp_del = shiny::actionButton(paste0("tlx_del", i), label="-")
-  #
-  #       if(i > 1) return(list(shiny::column(10, inpf),  shiny::column(1, inp_add), shiny::column(1, inp_del)))
-  #       else return(list(shiny::column(10, inpf),  shiny::column(2, inp_add)))
-  #     } else {
-  #       return(shiny::column(10, inpf))
-  #     }
-  #   }))
-  # })
 
+  observeEvent(input$model, {
+    log("input$model")
+    r$repeatmasker_df = repeatmasker_read(file.path(genomes_path, input$model, "annotation/ucsc_repeatmasker.tsv"), columns=c("repeatmasker_chrom", "repeatmasker_start", "repeatmasker_end", "repeatmasker_class"))
+    log("Repeatmasker file loaded!")
+  })
 
 
   observeEvent(input$offtargets, {
@@ -97,7 +87,8 @@ server <- function(input, output, session) {
     r$offtargets_df = offtargets_read(input$offtargets$datapath)
   }, ignoreInit=T)
 
-  eventReactive(input$calculate, {
+
+  observeEvent(input$calculate, {
     req(!is.null(isolate(r$tlx_df)))
     log("input$calculate")
 
@@ -110,6 +101,9 @@ server <- function(input, output, session) {
     slocal = shiny::isolate(input$slocal)
     llocal = shiny::isolate(input$llocal)
     model = shiny::isolate(input$model)
+    tlx_df = shiny::isolate(r$tlx_df)
+
+    print(colnames(r$repeatmasker_df))
 
     cat(file=stderr(), paste0(
       "junsize=", junsize,
@@ -122,6 +116,8 @@ server <- function(input, output, session) {
       "\nllocal=", llocal,
       "\nmodel=", model
     ))
+
+    tlx_df = tlx_mark_repeats(tlx_df, r$repeatmasker_df)
 
     # setwd("/home/s215v/Workspace/HTGTS/QCReport")
     # r = list()
@@ -154,23 +150,24 @@ server <- function(input, output, session) {
     #   repeats_summary_svg="Vivien/reports/repeats_summary.svg",
     #   junctions_venn_svg = "Vivien/reports/junctions_venn.svg",
     #   homology_svg = "Vivien/reports/homology_profile.svg",
-    #   circos_svg = "Vivien/reports/circos.svg"
+    #   circos_svg = "Vivien/reports/circos.svg",
+    #   junctions_count_svg="Vivien/reports/junctions_count.svg"
     # ))
-    # load(paste0("tmp/mm10_repeatmasker_df.rda"))
-    # r$repeatmasker_df = repeatmasker_df
-    # r$baits_df = as.data.frame(bed_read("Vivien/baits.bed")) %>%
-    #   setNames(paste0("bait_", colnames(.))) %>%
-    #   dplyr::rename(bait_chrom="bait_seqnames") %>%
-    #   tidyr::crossing(samples_df %>% dplyr::select(bait_sample=sample))
+    # r$repeatmasker_df = repeatmasker_read("genomes/mm10/annotation/ucsc_repeatmasker.tsv", columns=c("repeatmasker_chrom", "repeatmasker_start", "repeatmasker_end", "repeatmasker_class"))
     # samples_df = data.frame(path=list.files("Vivien", pattern="*.tlx", full.names=T)) %>%
     #   dplyr::mutate(sample=gsub("_B400_0", " / ", gsub("_result.tlx", "", basename(path))))
-    # r$offtargets_df = offtargets_read("Vivien/offtargets.bed")
+    # # r$offtargets_df = offtargets_read("Vivien/offtargets.bed")
     # tlx_df = tlx_read_many(samples_df)
     # tlx_df = tlx_remove_rand_chromosomes(tlx_df)
     # tlx_df = tlx_mark_repeats(tlx_df, r$repeatmasker_df)
     # tlx_df = tlx_mark_bait_chromosome(tlx_df)
     # tlx_df = tlx_mark_bait_junctions(tlx_df, bait_region)
-    log("SHOULD NOT BE HERE")
+    # tlx_df$tlx_is_offtarget = F
+    # r$offtargets_df = NULL
+    # r$baits_df = tlx_identify_baits(tlx_df)
+    #
+    # End Vivien's
+    #
 
     genome_path = file.path(genomes_path, model, paste0(model, ".fa"))
     cytoband_path = file.path(genomes_path, model, "annotation/cytoBand.txt")
@@ -213,26 +210,33 @@ server <- function(input, output, session) {
       plot_venn(venn_offtarget, size=width)
       dev.off()
 
-      session$userData$junctions_venn_svg = tempfile(fileext=".svg")
-      log("Plot venn ", session$userData$junctions_venn_svg, " (w=", width, " h=", height, ")")
+      list(src=normalizePath(session$userData$junctions_venn_svg), contentType='image/svg+xml', width=width, height=height, alt="Junctions venn")
+    }, deleteFile=F)
 
-      svg(session$userData$junctions_venn_svg, width=width/72, height=height/72, pointsize=1)
-      plot_venn(venn_offtarget, size=width)
-      svg("Vivien/reports/junctions_count.svg", width=500/72, height=500/72, pointsize=1)
-      tlx_df %>%
+
+    output$junctions_count = renderImage({
+      width = session$clientData$output_junctions_count_width
+      height = 960
+
+      session$userData$junctions_count_svg = tempfile(fileext=".svg")
+      log("Plot junctions count ", session$userData$junctions_count_svg, " (w=", width, " h=", height, ")")
+      svg(session$userData$junctions_count_svg, width=width/72, height=height/72, pointsize=1)
+      p = tlx_df %>%
         dplyr::mutate(Subset=dplyr::case_when(
           tlx_is_bait_junction~"bait peak",
           tlx_is_offtarget~"offtarget peak",
           !is.na(tlx_repeatmasker_class)~"o/w repeat",
           T~"other junctions")) %>%
-        ggplot() +
-          geom_bar(aes(x=forcats::fct_infreq(tlx_sample), fill=Subset)) +
-          theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
-          labs(x="", fill="Subset")
+          ggplot() +
+            geom_bar(aes(x=forcats::fct_infreq(tlx_sample), fill=Subset)) +
+            theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+            labs(x="", fill="Subset")
+        print(p)
       dev.off()
 
-      list(src=normalizePath(session$userData$junctions_venn_svg), contentType='image/svg+xml', width=width, height=height, alt="Junctions venn")
+      list(src=normalizePath(session$userData$junctions_count_svg), contentType='image/svg+xml', width=width, height=height, alt="Junctions count")
     }, deleteFile=F)
+
 
     #
     # Repeats summary plot
@@ -318,6 +322,6 @@ server <- function(input, output, session) {
 
       list(src=normalizePath(session$userData$circos_svg), contentType='image/svg+xml', width=size, height=size, alt="TLX circos plot")
     }, deleteFile=F)
-  })
+  }, ignoreInit=T)
 
 }

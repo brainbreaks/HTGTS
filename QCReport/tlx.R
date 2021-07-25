@@ -22,6 +22,7 @@ tlx_read = function(path, sample) {
 tlx_read_many = function(samples_df) {
   tlx_df.all = data.frame()
   for(f in 1:nrow(samples_df)) {
+    log("Reading tlx file ", f, ":",  samples_df$path[f])
     tlx_df.f = tlx_read(samples_df$path[f], sample=samples_df$sample[f])
     tlx_df.all = dplyr::bind_rows(tlx_df.all, tlx_df.f)
   }

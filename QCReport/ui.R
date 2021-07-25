@@ -10,12 +10,13 @@ ui <- shiny::fluidPage(
 
   shiny::sidebarLayout(
     shiny::sidebarPanel(
-      shiny::span(id="tlx_files", shiny::fileInput("tlx1", label="", placeholder="No file selected")),
+      #, fileInput("tlx1", label="", placeholder="No file selected")
+      shiny::span(id="tlx_files"),
       shiny::actionButton("tlx_add", label="+"),
       shiny::actionButton("tlx_del", label="-"),
 
       shiny::fileInput("offtargets", label="Offtargets file", placeholder = "No file selected"),
-      shiny::selectInput("model", label="Model", choices=c("hg19", "mm10")),
+      shiny::selectInput("model", label="Model", selected="mm10", choices=c("mm10", "hg19")),
       shiny::numericInput("qvalue", label="MACS2 qvalue", value=0.001),
 
       shiny::actionLink("advanced_hide", "advanced options"),
@@ -42,7 +43,8 @@ ui <- shiny::fluidPage(
       shiny::tabsetPanel(
         shiny::tabPanel(
           "Junctions",
-          shiny::plotOutput("junctions_venn")
+          shiny::plotOutput("junctions_venn", height = "auto"),
+          shiny::plotOutput("junctions_count", height = "auto")
         ),
         shiny::tabPanel(
           "Repeats",
