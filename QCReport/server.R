@@ -46,7 +46,6 @@ server <- function(input, output, session) {
     observer_id = paste0(input_id, "_observer")
 
     shiny::insertUI("#tlx_files", where="beforeEnd", ui=fileInput(input_id, label="", placeholder="No file selected"), immediate=T)
-    print(input_id)
     session$userData[[observer_id]] = observeEvent(input[[input_id]], {
       log(observer_id)
       tlx_df = tlx_read(input[[input_id]]$datapath, sample=basename(input[[input_id]]$name)) %>% dplyr::mutate(source=input[[input_id]]$datapath)
@@ -103,9 +102,7 @@ server <- function(input, output, session) {
     model = shiny::isolate(input$model)
     tlx_df = shiny::isolate(r$tlx_df)
 
-    print(colnames(r$repeatmasker_df))
-
-    cat(file=stderr(), paste0(
+    log(
       "junsize=", junsize,
       "\nexclude_repeats=", exclude_repeats,
       "\nexclude_bait_region=", exclude_bait_region,
@@ -115,7 +112,7 @@ server <- function(input, output, session) {
       "\nslocal=", slocal,
       "\nllocal=", llocal,
       "\nmodel=", model
-    ))
+    )
 
     tlx_df = tlx_mark_repeats(tlx_df, r$repeatmasker_df)
 
@@ -192,6 +189,7 @@ server <- function(input, output, session) {
     # Junctions overview
     #
     output$junctions_venn = renderImage({
+      log("output$junctions_venn ")
       width = session$clientData$output_junctions_venn_width
       height = 960
 
@@ -214,7 +212,9 @@ server <- function(input, output, session) {
     }, deleteFile=F)
 
 
+
     output$junctions_count = renderImage({
+      log("output$junctions_count")
       width = session$clientData$output_junctions_count_width
       height = 960
 
@@ -229,7 +229,8 @@ server <- function(input, output, session) {
           T~"other junctions")) %>%
           ggplot() +
             geom_bar(aes(x=forcats::fct_infreq(tlx_sample), fill=Subset)) +
-            theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+            theme_classic(base_size=18) +
+            theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1), legend.key.size = unit(20, 'pt')) +
             labs(x="", fill="Subset")
         print(p)
       dev.off()
@@ -242,10 +243,9 @@ server <- function(input, output, session) {
     # Repeats summary plot
     #
     output$repeats_summary = renderImage({
+      log("output$repeats_summary")
       width = session$clientData$output_repeats_summary_width
       height = 960
-
-      cat(file=stderr(), "repeats_summary")
 
       session$userData$repeats_summary_svg = tempfile(fileext=".svg")
       log("Plot repeats summary ", session$userData$repeats_summary_svg, " (w=", width, " h=", height, ")")
@@ -269,9 +269,10 @@ server <- function(input, output, session) {
           ggplot2::facet_wrap(~filter, scales="free") +
           # ggplot2::scale_y_continuous(breaks=scale_breaks_sub1k) +
           ggplot2::scale_fill_manual(values=palette_repeats, guide="none") +
-          ggplot2::theme_bw(base_size=24) +
+          ggplot2::theme_classic(base_size=18)+
+          ggplot2::theme(strip.background=element_blank()) +
           ggplot2::theme(axis.text.x=ggplot2::element_text(size=16))
-      log(p)
+      print(p)
       dev.off()
 
       list(src=normalizePath(session$userData$repeats_summary_svg), contentType='image/svg+xml', width=width, height=height, alt="Repeats summary")
@@ -281,19 +282,20 @@ server <- function(input, output, session) {
     # Homology plot
     #
     output$homology = renderImage({
+      log("output$homology ")
       width = session$clientData$output_homology_width
       height = 960
 
       # @todo: develop single style for plots
       session$userData$homology_svg = tempfile(fileext=".svg")
-      log(paste0("Plot homology plot ", session$userData$homology_svg, " (w=", size, " h=", size, ")"))
-      svg(session$userData$homology_svg, width=size/72, height=size/72, pointsize=1)
+      log(paste0("Plot homology plot ", session$userData$homology_svg, " (w=", width, " h=", height, ")"))
+      svg(session$userData$homology_svg, width=width/72, height=height/72, pointsize=1)
       plot_homology(tlx_df)
       dev.off()
 
       log("Finished")
 
-      list(src=normalizePath(session$userData$homology_svg), contentType='image/svg+xml', width=size, height=size, alt="TLX circos plot")
+      list(src=normalizePath(session$userData$homology_svg), contentType='image/svg+xml', width=width, height=height, alt="TLX circos plot")
     }, deleteFile=F)
 
     #

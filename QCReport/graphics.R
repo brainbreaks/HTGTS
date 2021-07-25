@@ -14,6 +14,12 @@ scale_breaks_1 = function(x) {
     breaks
 }
 
+scale_breaks_2 = function(x) {
+    breaks = seq(floor(min(x)), ceiling(max(x)), 1)
+    names(breaks) = ifelse((breaks %% 2)>0, as.character(breaks), "")
+    breaks
+}
+
 scale_breaks_sub1k = function(x) {
   breaks = seq(0, max(x), 500)
   names(breaks) = paste0(breaks/1e3, "")
@@ -30,40 +36,32 @@ plot_barcodes = function(tlx_df) {
 
 plot_homology = function(tlx_df) {
   homology_df = tlx_df %>%
-    dplyr::mutate(homology_size=B_Qend-Qstart+1) %>%
-    dplyr::mutate(homology_location=dplyr::case_when(
-      tlx_is_bait_junction~"Bait region",
-      tlx_is_bait_chromosome & !tlx_is_bait_junction~"Bait chromosome",
-      T~"Other chromosomes")) %>%
-    dplyr::mutate(homology_type=dplyr::case_when(
-      homology_size>0~"Microhomology",
-      homology_size==0~"Direct ligation",
-      homology_size<0~"Insertion")) %>%
-    dplyr::mutate(homology_type2=dplyr::case_when(
-      homology_size>=0~"Direct ligation | MH",
-      homology_size<0~"Insertion")) %>%
-    dplyr::mutate(homology_repeats=dplyr::case_when(
-      is.na(tlx_repeatmasker_class)~"No overlap with repeat",
-      T~"Overlap with repeat")) %>%
-    dplyr::mutate(homology_bait_junction=dplyr::case_when(
-      tlx_is_bait_junction~"Inside bait region",
-      T~"Outside bait region")) %>%
-    dplyr::filter(is.na(tlx_repeatmasker_class)) %>%
-    # dplyr::filter(!tlx_is_bait_junction & homology_size>=0) %>%
-    dplyr::group_by(tlx_sample, homology_bait_junction, homology_type2, homology_size) %>%
-    dplyr::summarize(homology_abundance_abs=n()) %>%
+    dplyr::group_by(tlx_sample, B_Rname) %>%
+    dplyr::mutate(misprimed_max=max(misprimed-uncut))  %>%
     dplyr::ungroup() %>%
-    dplyr::group_by(tlx_sample, homology_bait_junction) %>%
+    dplyr::mutate(Pray=B_Qend-Qstart+1, Bait=misprimed_max-misprimed) %>%
+    dplyr::mutate(homology_location=ifelse(tlx_is_bait_junction, "Inside bait region", "Outside bait region")) %>%
+    dplyr::filter(is.na(tlx_repeatmasker_class)) %>%
+    reshape2::melt(measure.vars=c("Pray", "Bait"), variable.name="homology_part", value.name="homology_size") %>%
+    #     # dplyr::filter(!tlx_is_bait_junction & homology_size>=0) %>%
+    dplyr::group_by(tlx_sample, homology_location, homology_part, homology_size) %>%
+    dplyr::summarize(homology_abundance_abs=n()) %>%
+    dplyr::group_by(tlx_sample, homology_part, homology_location) %>%
     dplyr::mutate(homology_abundance_rel=homology_abundance_abs/sum(homology_abundance_abs)) %>%
-    dplyr::ungroup()
+    dplyr::ungroup() %>%
+    dplyr::filter(homology_size>=0) %>%
+    dplyr::mutate(facet=paste0(homology_location, "\n(", homology_part, ")"))
 
-    ggplot(homology_df) +
-      ggplot2::geom_vline(xintercept=0, linetype="dashed") +
-      ggplot2::geom_line(aes(x=homology_size, y=homology_abundance_rel*100, color=tlx_sample)) +
-      ggplot2::theme_bw(base_size=16) +
-      ggplot2::labs(x="Deletion size", y="% of junctions") +
-      ggplot2::scale_x_continuous(breaks=scale_breaks_1, limits=c(-10, 10)) +
-      ggplot2::facet_wrap(~homology_bait_junction, scales="free", ncol=1)
+  p = ggplot(homology_df) +
+    ggplot2::geom_vline(xintercept=0, linetype="dashed") +
+    ggplot2::geom_line(aes(x=homology_size, y=homology_abundance_rel*100, color=tlx_sample)) +
+    ggplot2::labs(x="Deletion size", y="% of junctions", color="Sample", title="Junctions homology stats\n(Excluding junctions overlapping with repeats)") +
+    ggplot2::scale_x_continuous(breaks=scale_breaks_2) +
+    ggplot2::coord_cartesian(xlim=c(1, 20)) +
+    ggplot2::facet_wrap(~facet, scales="free", ncol=2) +
+    ggplot2::theme_classic(base_size=18) +
+    ggplot2::theme(legend.key.size=unit(20, 'pt'), plot.title=element_text(hjust=0.5), strip.background=element_blank())
+  print(p)
 }
 
 plot_venn = function(x, pallete="Pastel2", size=500) {
