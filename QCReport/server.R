@@ -12,6 +12,12 @@ source("utils.R")
 source("tlx.R")
 source("graphics.R")
 
+download_link = function(id, data, file) {
+  if(!is.null(data) && nrow(data)>0) {
+    readr::write_tsv(data, file=file, na="")
+  }
+}
+
 
 server <- function(input, output, session) {
   # @todo: properly load default
@@ -32,8 +38,21 @@ server <- function(input, output, session) {
 
   observeEvent(r$tlx_df, {
     log("r$tlx_df")
-    r$baits_df = tlx_identify_baits(r$tlx_df)
-  })
+    if(is.null(r$tlx_df) || nrow(r$tlx_df)==0) {
+      r$baits_df = NULL
+      shinyjs::hide(id="download_baits")
+    } else {
+      r$baits_df = tlx_identify_baits(r$tlx_df, breaksite_size=input$breaksite_size)
+      shinyjs::show(id="download_baits")
+    }
+  }, ignoreNULL=F)
+
+  output$download_baits <- downloadHandler(filename="baits.tsv",
+    content = function(file) {
+      log("output$download_baits ")
+      download_link(id="download_baits", data=r$baits_df, file=file)
+    }
+  )
 
   observeEvent(input$genome, {
     log("input$genome")
@@ -45,15 +64,17 @@ server <- function(input, output, session) {
     input_id = paste0("tlx", r$tlx_num+1)
     observer_id = paste0(input_id, "_observer")
 
-    shiny::insertUI("#tlx_files", where="beforeEnd", ui=fileInput(input_id, label="", placeholder="No file selected"), immediate=T)
+    shiny::insertUI("#tlx_files", where="beforeEnd", ui=fileInput(input_id, label="", placeholder="No file selected", multiple=T), immediate=T)
     session$userData[[observer_id]] = observeEvent(input[[input_id]], {
       log(observer_id)
-      tlx_df = tlx_read(input[[input_id]]$datapath, sample=basename(input[[input_id]]$name)) %>% dplyr::mutate(source=input[[input_id]]$datapath)
-      tlx_df = tlx_remove_rand_chromosomes(tlx_df)
-      tlx_df = tlx_mark_bait_chromosome(tlx_df)
-      tlx_df = tlx_mark_bait_junctions(tlx_df, isolate(input$bait_region))
-      tlx_df$tlx_is_offtarget = F
-      r$tlx_df = rbind(r$tlx_df, tlx_df)
+      for(i in 1:length(input[[input_id]][,1])) {
+        tlx_df = tlx_read(input[[input_id]][[i, "datapath"]], sample=basename(input[[input_id]][[i, "name"]])) %>% dplyr::mutate(source=input[[input_id]][[i, "datapath"]])
+        tlx_df = tlx_remove_rand_chromosomes(tlx_df)
+        tlx_df = tlx_mark_bait_chromosome(tlx_df)
+        tlx_df = tlx_mark_bait_junctions(tlx_df, isolate(input$bait_region))
+        tlx_df$tlx_is_offtarget = F
+        r$tlx_df = rbind(r$tlx_df, tlx_df)
+      }
     }, ignoreInit=T)
 
     r$tlx_num = r$tlx_num + 1
@@ -64,9 +85,13 @@ server <- function(input, output, session) {
     log("input$tlx_del")
     input_id = paste0("tlx", r$tlx_num)
     observer_id = paste0(input_id, "_observer")
-
-    if(!is.null(input[[input_id]])) r$tlx_df = r$tlx_df %>% dplyr::filter(source!=input[[input_id]]$datapath)
     session$userData[[observer_id]]$destroy()
+
+    if(!is.null(input[[input_id]])) {
+      for(i in 1:length(input[[input_id]][,1])) {
+        r$tlx_df = r$tlx_df %>% dplyr::filter(source!=input[[input_id]][[i, "datapath"]])
+      }
+    }
     shiny::removeUI(selector="#tlx_files .shiny-input-container:last-child")
 
     r$tlx_num = r$tlx_num - 1
