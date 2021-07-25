@@ -1,5 +1,6 @@
 import tarfile
 import requests
+import httplib2
 import argparse
 import zipfile
 import tqdm
@@ -10,6 +11,12 @@ import os
 import glob
 from gff_longest_transcript import find_longest_transcript
 import gzip
+
+
+def url_exist(url):
+    h = httplib2.Http()
+    resp = h.request(url, 'HEAD')
+    return int(resp[0]['status']) < 400
 
 def download_ucsc_table(genome, track, table, dest=None, description=None, overwrite=False):
     data = {"jsh_pageVertPos": 0, "clade": "mammal", "org": "Mouse", "db": genome, "hgta_group": "varRep",
@@ -122,7 +129,12 @@ def download_genome(genome, path):
 
     download_file("http://hgdownload.cse.ucsc.edu/goldenpath/{genome}/database/chromInfo.txt.gz".format(genome=genome), dest=os.path.join(path, "{genome}/annotation/ChromInfo.txt".format(genome=genome)), compressed=True)
     download_file("http://hgdownload.cse.ucsc.edu/goldenpath/{genome}/database/cytoBand.txt.gz".format(genome=genome), dest=os.path.join(path, "{genome}/annotation/cytoBand.txt".format(genome=genome)), compressed=True)
-    download_raw_genome("http://hgdownload.cse.ucsc.edu/goldenPath/{genome}/bigZips/chromFa.tar.gz".format(genome=genome), dest=os.path.join(path, "{genome}/{genome}.fa".format(genome=genome)))
+    if url_exist("http://hgdownload.cse.ucsc.edu/goldenPath/{genome}/bigZips/chromFa.tar.gz".format(genome=genome)):
+        download_raw_genome("http://hgdownload.cse.ucsc.edu/goldenPath/{genome}/bigZips/chromFa.tar.gz".format(genome=genome), dest=os.path.join(path, "{genome}/{genome}.fa".format(genome=genome)))
+    elif url_exist("http://hgdownload.cse.ucsc.edu/goldenPath/{genome}/bigZips/{genome}.chromFa.tar.gz".format(genome=genome)):
+        download_raw_genome("http://hgdownload.cse.ucsc.edu/goldenPath/{genome}/bigZips/{genome}.chromFa.tar.gz".format(genome=genome), dest=os.path.join(path, "{genome}/{genome}.fa".format(genome=genome)))
+    else:
+        raise FileExistsError("chromFa.tar.gz url couldn't be accessed")
 
     download_file("http://hgdownload.cse.ucsc.edu/goldenPath/{genome}/bigZips/{genome}.chrom.sizes".format(genome=genome), dest=os.path.join(path, "{genome}/annotation/{genome}.chrom.sizes".format(genome=genome)))
     download_bowtie2_index("https://genome-idx.s3.amazonaws.com/bt/{genome}.zip".format(genome=genome), genome=genome, dest=path)
@@ -143,7 +155,7 @@ def download_dependencies(path):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Download groseq dependencies')
-    parser.add_argument('data', choices=['mm9', 'mm10', 'hg19', 'hg38', 'dependencies'], help="""Should be one of the following: \n
+    parser.add_argument('data', choices=['mm9', 'mm10', 'hg19', 'dependencies'], help="""Should be one of the following: \n
     mm9 - mm9 model files\n  
     mm10 - mm10 model files\n
     hg19 - hg19 model files""")
