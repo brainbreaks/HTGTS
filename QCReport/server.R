@@ -18,13 +18,12 @@ download_link = function(id, data, file) {
   }
 }
 
-
 server <- function(input, output, session) {
   # @todo: properly load default
   r <- shiny::reactiveValues(
     hidden_options=T,
     baits_df=NULL,
-    tlx_df=NULL,
+    tlx_df=tlx_blank(),
     offtargets_df=NULL,
     tlx_num=0,
     repeatmasker_df=NULL,
@@ -33,18 +32,14 @@ server <- function(input, output, session) {
 
 
   observeEvent(input$advanced_hide, {
+    log(input$advanced_hide)
     shinyjs::toggle(id="advanced_panel")
   })
 
   observeEvent(r$tlx_df, {
     log("r$tlx_df")
-    if(is.null(r$tlx_df) || nrow(r$tlx_df)==0) {
-      r$baits_df = NULL
-      shinyjs::hide(id="download_baits")
-    } else {
-      r$baits_df = tlx_identify_baits(r$tlx_df, breaksite_size=input$breaksite_size)
-      shinyjs::show(id="download_baits")
-    }
+    r$baits_df = tlx_identify_baits(r$tlx_df, breaksite_size=input$breaksite_size)
+    shinyjs::toggle(id="download_baits", condition=nrow(r$tlx_df)>0)
   }, ignoreNULL=F)
 
   output$download_baits <- downloadHandler(filename="baits.tsv",
@@ -62,40 +57,62 @@ server <- function(input, output, session) {
   observeEvent(input$tlx_add, {
     log("input$tlx_add")
     group_i = r$tlx_num+1
-    input_id = paste0("tlx", group_i)
-    observer_id = paste0(input_id, "_observer")
+    input_id = paste0("tlx_input", group_i)
+    control_id = paste0("tlx_control", group_i)
 
-    shiny::insertUI("#tlx_files", where="beforeEnd", ui=fileInput(input_id, label="", placeholder="No file selected", multiple=T), immediate=T)
-    session$userData[[observer_id]] = observeEvent(input[[input_id]], {
-      log(observer_id)
-      for(i in 1:length(input[[input_id]][,1])) {
-        tlx_df = tlx_read(input[[input_id]][[i, "datapath"]], sample=basename(input[[input_id]][[i, "name"]]), group=paste("group", group_i))
+    shiny::insertUI("#tlx_files", where="beforeEnd", immediate=T, ui=shiny::div(class="tlx_group",
+      fileInput(input_id, label="Input", placeholder="No file selected", multiple=T),
+      fileInput(control_id, label="Control", placeholder="No file selected", multiple=T))
+    )
+
+    session$userData[[paste0("tlx", group_i, "_observer")]] = observeEvent(c(input[[input_id]], input[[control_id]]), {
+      log(paste0("tlx", group_i, "_observer"))
+
+      group_id = paste("group", group_i)
+      tlx_df = isolate(r$tlx_df %>% dplyr::filter(tlx_group!=group_id))
+      for(field_id2 in c(input_id, control_id)) {
+        if(is.null(input[[field_id2]])) next
+        if(length(input[[field_id2]][,1])==0) next
+
+        for(i in 1:length(input[[field_id2]][,1])) {
+          tlx_df = rbind(tlx_df, tlx_read(input[[field_id2]][[i, "datapath"]], sample=basename(input[[field_id2]][[i, "name"]]), group=group_id, control=grepl("control", field_id2)))
+        }
+      }
+
+      if(nrow(tlx_df)) {
         tlx_df = tlx_remove_rand_chromosomes(tlx_df)
         tlx_df = tlx_mark_bait_chromosome(tlx_df)
         tlx_df = tlx_mark_bait_junctions(tlx_df, isolate(input$bait_region))
         tlx_df$tlx_is_offtarget = F
-        r$tlx_df = rbind(r$tlx_df, tlx_df)
       }
+      r$tlx_df = tlx_df
     }, ignoreInit=T)
 
     r$tlx_num = r$tlx_num + 1
+    shinyjs::toggle("tlx_del", condition=r$tlx_num>0)
   }, ignoreNULL=F)
 
 
   observeEvent(input$tlx_del, {
     log("input$tlx_del")
+    group_i = r$tlx_num
     input_id = paste0("tlx", r$tlx_num)
-    observer_id = paste0(input_id, "_observer")
-    session$userData[[observer_id]]$destroy()
+    control_id = paste0("tlx_control", group_i)
 
-    if(!is.null(input[[input_id]])) {
-      for(i in 1:length(input[[input_id]][,1])) {
-        r$tlx_df = r$tlx_df %>% dplyr::filter(tlx_path!=input[[input_id]][[i, "datapath"]])
+    for(field in c(input_id, control_id)) {
+      if(is.null(input[[field]])) next
+      if(length(input[[field]][,1])==0) next
+
+      for(i in 1:length(input[[field]][,1])) {
+        r$tlx_df = r$tlx_df %>% dplyr::filter(tlx_path!=input[[field]][[i, "datapath"]])
       }
     }
-    shiny::removeUI(selector="#tlx_files .shiny-input-container:last-child")
+
+    shiny::removeUI(selector=".tlx_group:last-of-type")
+    session$userData[[paste0("tlx", group_i, "_observer")]]$destroy()
 
     r$tlx_num = r$tlx_num - 1
+    shinyjs::toggle("tlx_del", condition=r$tlx_num>0)
   }, ignoreInit=T)
 
 

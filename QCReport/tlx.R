@@ -14,9 +14,15 @@ tlx_cols = cols(
   largegap=readr::col_double(), mapqual=readr::col_double(), breaksite=readr::col_double(), sequential=readr::col_double(), repeatseq=readr::col_double(), duplicate=readr::col_double()
 )
 
-tlx_read = function(path, sample, group="") {
+tlx_blank = function() {
+  as.data.frame(t(sapply(names(tlx_cols$cols), function(z) NA))) %>%
+    dplyr::mutate(tlx_sample=NA, tlx_path=NA, tlx_group=NA, tlx_control=NA) %>%
+    dplyr::slice(0)
+}
+
+tlx_read = function(path, sample, group="", control=F) {
   readr::read_tsv(path, comment="#", skip=16, col_names=names(tlx_cols$cols), col_types=tlx_cols) %>%
-      dplyr::mutate(tlx_sample=sample, tlx_path=path, tlx_group=group)
+      dplyr::mutate(tlx_sample=sample, tlx_path=path, tlx_group=group, tlx_control=control)
 }
 
 tlx_read_many = function(samples_df) {
@@ -37,6 +43,10 @@ tlx_remove_rand_chromosomes = function(tlx_df) {
 
 
 tlx_identify_baits = function(tlx_df, breaksite_size=19) {
+  if(is.null(tlx_df) || nrow(tlx_df)==0) {
+    return(data.frame(bait_sample=NA, bait_chrom=NA, bait_strand=NA, bait_start=NA, bait_end=NA) %>% dplyr::slice(0))
+  }
+
   baits_df = tlx_df %>%
     dplyr::group_by(tlx_sample, B_Rname, B_Strand) %>%
     dplyr::do((function(z){
@@ -49,6 +59,7 @@ tlx_identify_baits = function(tlx_df, breaksite_size=19) {
     dplyr::ungroup() %>%
     dplyr::select(bait_sample=tlx_sample, bait_chrom=B_Rname, bait_strand, bait_start, bait_end)
 
+  print(baits_df)
   baits_df
 }
 
