@@ -9,6 +9,19 @@ log = function(..., collapse=NULL) {
   cat(file=stderr(), msg)
 }
 
+log_input = function(input) {
+  vals = reactiveValuesToList(input)
+  vals_filter = !grepl("shinyActionButtonValue", sapply(vals, function(z) {paste(class(z), collapse="|")}))
+  vals = vals[vals_filter]
+  vals_pretty = sapply(vals, function(z) {
+    if(is.data.frame(z) & "name" %in% colnames(z)) z = paste(z$name, collapse=", ")
+    if(is.null(z)) z = "NULL"
+    as.character(z)
+  })
+
+  log(names(vals_pretty), "=", vals_pretty, collapse="\n")
+}
+
 macs_cols = cols(
   macs_chrom=col_character(), macs_start=col_double(), macs_end=col_double(), macs_length=col_character(), macs_summit_abs=col_double(),
   macs_pileup=col_double(), macs_pvalue=col_double(), macs_fc=col_double(), macs_qvalue=col_double(), macs_name=col_character(), macs_comment=col_character()
@@ -94,12 +107,12 @@ repeatmasker_read = function(path, columns=c("repeatmasker_chrom", "repeatmasker
   }
 }
 
-macs2 = function(name, sample, control=NULL, qvalue=0.01, extsize=200, slocal=1000, llocal=10000000, output_dir="data/macs2") {
+macs2 = function(name, sample, control=NULL, qvalue=0.01, extsize=2000, slocal=50000, llocal=10000000, output_dir="data/macs2") {
   bed_sample = paste("-t", sample)
   bed_control = ifelse(is.null(control), "", paste("-c", control))
 
   cmd = stringr::str_glue("macs2 callpeak {bed_sample} {bed_control} --seed 123 -f BED -g hs --keep-dup all -n {name} --outdir {output_dir} --nomodel --slocal {slocal} --extsize {extsize} -q {qvalue} --llocal {llocal} --bdg --trackline", bed_sample=bed_sample, bed_control=bed_control, name=name, output_dir=output_dir, extsize=extsize, qvalue=qvalue, llocal=sprintf("%0.0f", llocal), slocal=sprintf("%0.0f", slocal))
-  print(cmd)
+  log(cmd)
   system(cmd)
 
   readr::read_tsv(paste0(output_dir, "/", name, "_peaks.xls"), comment="#", col_names=names(macs_cols$cols), col_types=macs_cols) %>%

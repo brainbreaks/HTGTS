@@ -56,6 +56,7 @@ server <- function(input, output, session) {
 
   observeEvent(input$tlx_add, {
     log("input$tlx_add")
+
     group_i = r$tlx_num+1
     input_id = paste0("tlx_input", group_i)
     control_id = paste0("tlx_control", group_i)
@@ -134,51 +135,19 @@ server <- function(input, output, session) {
     req(!is.null(isolate(r$tlx_df)))
     log("input$calculate")
 
-    junsize = shiny::isolate(input$junsize)
     exclude_repeats = shiny::isolate(input$exclude_repeats)
     exclude_bait_region = shiny::isolate(input$exclude_bait_region)
-    bait_region = shiny::isolate(input$bait_region)
     extsize = shiny::isolate(input$extsize)
     qvalue = shiny::isolate(input$qvalue)
+    pileup = shiny::isolate(input$pileup)
     slocal = shiny::isolate(input$slocal)
     llocal = shiny::isolate(input$llocal)
     model = shiny::isolate(input$model)
-    tlx_df = shiny::isolate(r$tlx_df)
 
-    log(
-      "junsize=", junsize,
-      "\nexclude_repeats=", exclude_repeats,
-      "\nexclude_bait_region=", exclude_bait_region,
-      "\nbait_region=", bait_region,
-      "\nextsize=", extsize,
-      "\nqvalue=", qvalue,
-      "\nslocal=", slocal,
-      "\nllocal=", llocal,
-      "\nmodel=", model
-    )
+    log_input(input)
 
-    tlx_df = tlx_mark_repeats(tlx_df, r$repeatmasker_df)
+    tlx_df = tlx_mark_repeats(shiny::isolate(r$tlx_df), r$repeatmasker_df)
 
-    # setwd("/home/s215v/Workspace/HTGTS/QCReport")
-    # r = list()
-    # input = list(
-    #   tlx=list(datapath="test_data/JJ03_B400_012_result.tlx", name="test_data/JJ03_B400_012_result.tlx"),
-    #   offtargets=list(datapath="test_data/offtargets.tsv", name="test_data/offtargets.tsv"))
-    # r$tlx_df = tlx_read(input$tlx$datapath, sample=basename(input$tlx$name))
-    # r$baits_df = tlx_identify_baits(r$tlx_df)
-    # r$offtargets_df = offtargets_read(input$offtargets$datapath)
-    # session = list(userData=list())
-    # size = 500; junsize = 300; exclude_repeats = F; exclude_bait_region = T; bait_region = 500000; extsize = 2000; qvalue = 0.001; slocal = 1000; llocal = 10000000; model = "hg19"; genomes_path = "/home/s215v/Workspace/HTGTS/genomes"
-    # samples_df = rbind(samples_df, as.data.frame(do.call(rbind, list(
-    #   c(path="test_data/JJ01_B400_012_result.tlx", sample="Control"),
-    #   c(path="test_data/JJ02_B400_012_result.tlx", sample="4Gr"),
-    #   c(path="test_data/JJ03_B400_012_result.tlx", sample="4Gr + PARPi")
-    # ))))
-
-    #
-    # Show microhomology profile
-    #
-    # tlx_df = tlx_read_many(samples_df)
 
 
     #
@@ -195,13 +164,13 @@ server <- function(input, output, session) {
     # ))
     # r$repeatmasker_df = repeatmasker_read("genomes/mm10/annotation/ucsc_repeatmasker.tsv", columns=c("repeatmasker_chrom", "repeatmasker_start", "repeatmasker_end", "repeatmasker_class"))
     # samples_df = data.frame(path=list.files("Vivien", pattern="*.tlx", full.names=T)) %>%
-    #   dplyr::mutate(sample=gsub("_B400_0", " / ", gsub("_result.tlx", "", basename(path))))
+    #   dplyr::mutate(sample=gsub("_B400_0", " / ", gsub("_result.tlx", "", basename(path))), group="group1", control=grepl("VI05", path))
     # # r$offtargets_df = offtargets_read("Vivien/offtargets.bed")
     # tlx_df = tlx_read_many(samples_df)
     # tlx_df = tlx_remove_rand_chromosomes(tlx_df)
-    # tlx_df = tlx_mark_repeats(tlx_df, r$repeatmasker_df)
     # tlx_df = tlx_mark_bait_chromosome(tlx_df)
     # tlx_df = tlx_mark_bait_junctions(tlx_df, bait_region)
+    # tlx_df = tlx_mark_repeats(tlx_df, r$repeatmasker_df)
     # tlx_df$tlx_is_offtarget = F
     # r$offtargets_df = NULL
     # r$baits_df = tlx_identify_baits(tlx_df)
@@ -218,7 +187,7 @@ server <- function(input, output, session) {
       tlx_df = tlx_mark_offtargets(tlx_df, offtarget2bait_df)
     }
 
-    macs_df = tlx_macs2(tlx_df, junsize=junsize, extsize=extsize, qvalue=qvalue, slocal=slocal, llocal=llocal, exclude_bait_region=exclude_bait_region, exclude_repeats=exclude_repeats)
+    macs_df = tlx_macs2(tlx_df, extsize=extsize, qvalue=qvalue, pileup=pileup, slocal=slocal, llocal=llocal, exclude_bait_region=exclude_bait_region, exclude_repeats=exclude_repeats)
     if(!is.null(offtarget2bait_df)) {
       macs_df = macs_df %>%
         dplyr::left_join(offtarget2bait_df, by=c("macs_sample"="bait_sample")) %>%

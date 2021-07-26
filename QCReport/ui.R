@@ -21,6 +21,8 @@ ui <- shiny::fluidPage(
       shiny::fileInput("offtargets", label="Offtargets file", placeholder = "No file selected"),
       shiny::selectInput("model", label="Model", selected="mm10", choices=c("mm10", "hg19")),
       shiny::numericInput("qvalue", label="MACS2 qvalue", value=0.001),
+      shiny::numericInput("pileup", label="MACS2 smallest pileup to call a peak", value=5),
+
 
       shiny::actionLink("advanced_hide", "advanced options"),
       shinyjs::hidden(
@@ -31,9 +33,8 @@ ui <- shiny::fluidPage(
             shiny::column(10, shiny::numericInput("bait_region", label="", value=500000))
           ),
           shiny::numericInput("breaksite_size", label="breaksite size", value=19),
-          shiny::numericInput("junsize", label="Junction size", value=300),
-          shiny::numericInput("extsize", label="extsize", value=2000),
-          shiny::numericInput("slocal", label="slocal", value=1000),
+          shiny::numericInput("extsize", label="extsize", value=300),
+          shiny::numericInput("slocal", label="slocal", value=50000),
           shiny::numericInput("llocal", label="llocal", value=10000000)
         )
       ),

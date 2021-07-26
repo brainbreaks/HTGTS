@@ -29,7 +29,7 @@ tlx_read_many = function(samples_df) {
   tlx_df.all = data.frame()
   for(f in 1:nrow(samples_df)) {
     log("Reading tlx file ", f, ":",  samples_df$path[f])
-    tlx_df.f = tlx_read(samples_df$path[f], sample=samples_df$sample[f])
+    tlx_df.f = tlx_read(samples_df$path[f], sample=samples_df$sample[f], control=samples_df$control[f], group=samples_df$group[f])
     tlx_df.all = dplyr::bind_rows(tlx_df.all, tlx_df.f)
   }
 
@@ -59,7 +59,6 @@ tlx_identify_baits = function(tlx_df, breaksite_size=19) {
     dplyr::ungroup() %>%
     dplyr::select(bait_sample=tlx_sample, bait_chrom=B_Rname, bait_strand, bait_start, bait_end)
 
-  print(baits_df)
   baits_df
 }
 
@@ -110,20 +109,11 @@ tlx_mark_repeats = function(tlx_df, repeatmasker_df) {
     data.frame()
 }
 
-tlx_macs2 = function(tlx_df, name=NULL, junsize=300, qvalue=0.01, extsize=200, slocal=1000, llocal=10000000, exclude_bait_region=F, exclude_repeats=F, exclude_offtargets=F) {
+tlx_macs2 = function(tlx_df, qvalue=0.01, pileup=1, extsize=2000, slocal=50000, llocal=10000000, exclude_bait_region=F, exclude_repeats=F, exclude_offtargets=F, exttype=c("along", "symmetrical")) {
   if(exclude_bait_region && !("tlx_is_bait_junction" %in% colnames(tlx_df))) {
     stop("tlx_is_bait_junction is not found in tlx data frame")
   }
-  if(is.null(name) && !("tlx_sample" %in% colnames(tlx_df))) {
-    stop("tlx_sample is not found in tlx data frame")
-  }
 
-  if(is.null(name)) {
-    name = tlx_df$tlx_sample[1]
-  }
-
-  f_bed = tempfile()
-  print(paste0("Convert to BED (", f_bed, ")"))
   if(exclude_offtargets) {
     if(!("tlx_is_offtarget" %in% colnames(tlx_df))) {
       stop("tlx_is_offtarget is not found in tlx data frame")
@@ -136,14 +126,47 @@ tlx_macs2 = function(tlx_df, name=NULL, junsize=300, qvalue=0.01, extsize=200, s
     }
     tlx_df = tlx_df %>% dplyr::filter(is.na(tlx_repeatmasker_class))
   }
-  # @todo: test that strand is detected correctly
-  tlx_df  %>%
-    dplyr::ungroup() %>%
+
+  tlx_df = tlx_df %>%
     dplyr::filter(!exclude_bait_region | !tlx_is_bait_junction) %>%
-    dplyr::mutate(bed_start=ifelse(Strand=="1", Junction-junsize, Junction-1), bed_end=ifelse(Strand=="1", Junction, Junction+junsize-1), bed_strand=ifelse(Strand=="1", "-", "+")) %>%
-    dplyr::select(Rname, bed_start, bed_end, Qname, 0, bed_strand) %>%
-    readr::write_tsv(file=f_bed, na="", col_names=F)
-  print("Running MACS")
-  macs_df = macs2(name=basename(f_bed), sample=f_bed, extsize=extsize, qvalue=qvalue, slocal=slocal, llocal=llocal, output_dir=dirname(f_bed)) %>%
-    dplyr::mutate(macs_sample=name)
+    dplyr::mutate(bed_strand=ifelse(Strand=="1", "-", "+"), bed_start=Junction, bed_end=Junction+1)
+
+  # @TODO: I think macs does this internally
+  # if(exttype=="along") {
+  #     tlx_df = tlx_df %>% dplyr::mutate(bed_start=ifelse(Strand=="-1", Junction-junsize, Junction-1), bed_end=ifelse(Strand=="-1", Junction, Junction+junsize-1))
+  # } else {
+  #     tlx_df = tlx_df %>% dplyr::mutate(bed_start=Junction-ceiling(junsize/2), bed_end=Junction+ceiling(junsize/2))
+  # }
+
+  macs_df.all = data.frame()
+  for(gr in unique(tlx_df$tlx_group)) {
+    tlx_df.gr = tlx_df %>% dplyr::filter(tlx_group=="group1")
+
+    f_input_bed = tempfile()
+    f_control_bed = tempfile()
+
+    tlx_df.gr %>%
+      dplyr::filter(!tlx_control) %>%
+      dplyr::select(Rname, bed_start, bed_end, Qname, 0, bed_strand) %>%
+      readr::write_tsv(file=f_input_bed, na="", col_names=F)
+
+    if(any(tlx_df.gr$tlx_control)) {
+      tlx_df.gr %>%
+        dplyr::filter(tlx_control) %>%
+        dplyr::select(Rname, bed_start, bed_end, Qname, 0, bed_strand) %>%
+        readr::write_tsv(file=f_control_bed, na="", col_names=F)
+
+      print("Running MACS with control")
+      macs_df = macs2(name=basename(f_input_bed), sample=f_input_bed, control=f_control_bed, extsize=extsize, qvalue=qvalue, slocal=slocal, llocal=llocal, output_dir=dirname(f_input_bed)) %>%
+        dplyr::mutate(macs_group=gr)
+    } else {
+      print("Running MACS without control")
+      macs_df = macs2(name=basename(f_input_bed), sample=f_input_bed, extsize=extsize, qvalue=qvalue, slocal=slocal, llocal=llocal, output_dir=dirname(f_input_bed)) %>%
+        dplyr::mutate(macs_group=gr)
+    }
+
+    macs_df.all = rbind(macs_df.all, macs_df)
+  }
+
+  macs_df.all %>% dplyr::filter(macs_pileup>=pileup)
 }
