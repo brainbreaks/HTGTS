@@ -14,9 +14,9 @@ tlx_cols = cols(
   largegap=readr::col_double(), mapqual=readr::col_double(), breaksite=readr::col_double(), sequential=readr::col_double(), repeatseq=readr::col_double(), duplicate=readr::col_double()
 )
 
-tlx_read = function(path, sample) {
+tlx_read = function(path, sample, group="") {
   readr::read_tsv(path, comment="#", skip=16, col_names=names(tlx_cols$cols), col_types=tlx_cols) %>%
-      dplyr::mutate(tlx_sample=sample)
+      dplyr::mutate(tlx_sample=sample, tlx_path=path, tlx_group=group)
 }
 
 tlx_read_many = function(samples_df) {
