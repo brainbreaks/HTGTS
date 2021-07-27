@@ -61,6 +61,13 @@ ui <- shiny::fluidPage(
         shiny::tabPanel(
           "Overview",
           shiny::plotOutput("circos") %>% shinycssloaders::withSpinner(color="#0dc5c1")
+        ),
+        shiny::tabPanel(
+          "Compare hits",
+          shiny::selectInput("compare_group1", label="Group 1", choices=c()),
+          shiny::selectInput("compare_group2", label="Group 2", choices=c()),
+          shiny::actionButton("compare_calculate", label="Calculate"),
+          shiny::plotOutput("compare") %>% shinycssloaders::withSpinner(color="#0dc5c1")
         )
       )
     )

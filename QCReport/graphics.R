@@ -34,9 +34,14 @@ plot_barcodes = function(tlx_df) {
     ggseqlogo()
 }
 
+theme_brain = function() {
+   ggplot2::theme_classic(base_size=18) +
+   ggplot2::theme(legend.key.size=unit(20, 'pt'), plot.title=element_text(hjust=0.5), strip.background=element_blank())
+}
+
 plot_homology = function(tlx_df) {
   homology_df = tlx_df %>%
-    dplyr::group_by(tlx_sample, B_Rname) %>%
+    dplyr::group_by(tlx_group, tlx_sample, B_Rname) %>%
     dplyr::mutate(misprimed_max=max(misprimed-uncut))  %>%
     dplyr::ungroup() %>%
     dplyr::mutate(Pray=B_Qend-Qstart+1, Bait=misprimed_max-misprimed) %>%
@@ -44,38 +49,50 @@ plot_homology = function(tlx_df) {
     dplyr::filter(is.na(tlx_repeatmasker_class)) %>%
     reshape2::melt(measure.vars=c("Pray", "Bait"), variable.name="homology_part", value.name="homology_size") %>%
     #     # dplyr::filter(!tlx_is_bait_junction & homology_size>=0) %>%
-    dplyr::group_by(tlx_sample, homology_location, homology_part, homology_size) %>%
+    dplyr::group_by(tlx_group, tlx_sample, homology_location, homology_part, homology_size) %>%
     dplyr::summarize(homology_abundance_abs=n()) %>%
-    dplyr::group_by(tlx_sample, homology_part, homology_location) %>%
+    dplyr::group_by(tlx_group, tlx_sample, homology_part, homology_location) %>%
     dplyr::mutate(homology_abundance_rel=homology_abundance_abs/sum(homology_abundance_abs)) %>%
     dplyr::ungroup() %>%
     dplyr::filter(homology_size>=0) %>%
-    dplyr::mutate(facet=paste0(homology_location, "\n(", homology_part, ")"))
+    dplyr::mutate(homology_abundance_rel=ifelse(homology_part=="Bait", -1, 1)*homology_abundance_rel)
 
-  p = ggplot(homology_df) +
-    ggplot2::geom_vline(xintercept=0, linetype="dashed") +
-    ggplot2::geom_line(aes(x=homology_size, y=homology_abundance_rel*100, color=tlx_sample)) +
-    ggplot2::labs(x="Deletion size", y="% of junctions", color="Sample", title="Junctions homology stats\n(Excluding junctions overlapping with repeats)") +
-    ggplot2::scale_x_continuous(breaks=scale_breaks_2) +
-    ggplot2::coord_cartesian(xlim=c(1, 20)) +
-    ggplot2::facet_wrap(~facet, scales="free", ncol=2) +
-    ggplot2::theme_classic(base_size=18) +
-    ggplot2::theme(legend.key.size=unit(20, 'pt'), plot.title=element_text(hjust=0.5), strip.background=element_blank())
-  print(p)
+  p = list()
+  for(gr in unique(homology_df$tlx_group)) {
+    homology_df.gr = homology_df %>% dplyr::filter(tlx_group==gr)
+    homology_ylim = homology_df %>%
+      dplyr::group_by(tlx_group) %>%
+      dplyr::summarize(homology_abundance_rel=max(abs(homology_abundance_rel)))
+    p[[length(p)+1]] = ggplot(homology_df.gr) +
+      geom_rect(aes(ymin=0, ymax=homology_abundance_rel*100, xmin=0, xmax=100), fill="#FF000005", data=homology_ylim) +
+      geom_rect(aes(ymin=-homology_abundance_rel*100, ymax=0, xmin=0, xmax=100), fill="#0000FF05", data=homology_ylim) +
+      geom_text(aes(x=20, y=homology_abundance_rel*100/2), label="Pray", data=homology_ylim, size=8, hjust=1) +
+      geom_text(aes(x=20, y=-homology_abundance_rel*100/2), label="Bait", data=homology_ylim, size=8, hjust=1) +
+      geom_hline(yintercept=0) +
+      ggplot2::geom_line(aes(x=homology_size, y=homology_abundance_rel*100, color=tlx_sample, group=paste0(tlx_sample, homology_location, homology_part))) +
+      ggplot2::labs(x="Deletion size", y="% of junctions", color="Sample") +
+      # ggplot2::scale_x_continuous(breaks=scale_breaks_2) +
+      ggplot2::scale_y_continuous(labels=abs) +
+      ggplot2::coord_cartesian(xlim=c(1, 20)) +
+      ggplot2::facet_grid(homology_location~., scales="free") +
+      ggplot2::theme_classic(base_size=18) +
+      ggplot2::theme(legend.key.size=unit(20, 'pt'), plot.title=element_text(hjust=0.5), strip.background=element_blank())
+  }
+
+  gridExtra::grid.arrange(grobs=p, top=textGrob("Junctions homology stats\n(Excluding junctions overlapping with repeats)", gp=gpar(fontsize=20,font=20)))
 }
 
-plot_venn = function(x, pallete="Pastel2", size=500) {
-  cex = size/30
-  plot.new()
+plot_venn = function(x, main, pallete="Pastel2", size=500) {
   p = VennDiagram::venn.diagram(
+    main=main,
     x = x, height=size, width=size,
     margin=0.1,
-    cat.cex=size/50, cex=cex,
+    cat.cex=size/50, cex=size/30, main.cex=size/30,
     lwd=2, lty='blank', fill=RColorBrewer::brewer.pal(length(x), pallete), cat.fontface="bold", filename=NULL)
   grid::grid.draw(p)
 }
 
-plot_circos = function(data, cytoband_path, annotations=NULL, links=NULL, circos_bw=1e6-1, cex=5) {
+plot_circos = function(data, title, cytoband_path, annotations=NULL, links=NULL, circos_bw=1e6-1, cex=5) {
   cytoband = circlize::read.cytoband(cytoband_path)
   cytoband_df = data.frame(cytoband$chr.len) %>% tibble::rownames_to_column("chrom") %>% dplyr::rename(chrom_length="cytoband.chr.len")
 
@@ -154,6 +171,7 @@ plot_circos = function(data, cytoband_path, annotations=NULL, links=NULL, circos
     region1=links_sum %>% dplyr::select(chr=chrom1, start=start1, end=end1),
     region2=links_sum %>% dplyr::select(chr=chrom2, start=start2, end=end2),
     col=links_sum$color, border=NA)
+  title(title)
 
   circlize::circos.clear()
 }

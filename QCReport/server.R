@@ -91,6 +91,9 @@ server <- function(input, output, session) {
 
     r$tlx_num = r$tlx_num + 1
     shinyjs::toggle("tlx_del", condition=r$tlx_num>0)
+
+    shiny::updateSelectInput(inputId="compare_group1", choices=unique(r$tlx_df$tlx_group))
+    shiny::updateSelectInput(inputId="compare_group2", choices=unique(r$tlx_df$tlx_group))
   }, ignoreNULL=F)
 
 
@@ -114,6 +117,8 @@ server <- function(input, output, session) {
 
     r$tlx_num = r$tlx_num - 1
     shinyjs::toggle("tlx_del", condition=r$tlx_num>0)
+    shiny::updateSelectInput(inputId="compare_group1", choices=unique(tlx_df$tlx_group))
+    shiny::updateSelectInput(inputId="compare_group2", choices=unique(tlx_df$tlx_group))
   }, ignoreInit=T)
 
 
@@ -130,6 +135,12 @@ server <- function(input, output, session) {
     r$offtargets_df = offtargets_read(input$offtargets$datapath)
   }, ignoreInit=T)
 
+  observeEvent(input$compare_calculate, {
+    req(!is.null(isolate(r$macs_df)))
+    log("input$compare_calculate")
+
+
+  })
 
   observeEvent(input$calculate, {
     req(!is.null(isolate(r$tlx_df)))
@@ -147,6 +158,7 @@ server <- function(input, output, session) {
     log_input(input)
 
     tlx_df = tlx_mark_repeats(shiny::isolate(r$tlx_df), r$repeatmasker_df)
+    baits_df = shiny::isolate(r$baits_df)
 
 
 
@@ -154,7 +166,7 @@ server <- function(input, output, session) {
     # Vivien's
     #
     # setwd("/home/s215v/Workspace/HTGTS/QCReport")
-    # r = list(); width = 500; height=500; junsize = 300; exclude_repeats = F; exclude_bait_region = T; bait_region = 500000; extsize = 2000; qvalue = 0.001; slocal = 1000; llocal = 10000000; model = "mm10"; genomes_path = "/home/s215v/Workspace/HTGTS/genomes"
+    # r = list(); width = 500; height=500; junsize = 300; pileup=5; exclude_repeats = F; exclude_bait_region = T; bait_region = 500000; extsize = 2000; qvalue = 0.001; slocal = 1000; llocal = 10000000; model = "mm10"; genomes_path = "/home/s215v/Workspace/HTGTS/genomes"
     # session = list(userData=list(
     #   repeats_summary_svg="Vivien/reports/repeats_summary.svg",
     #   junctions_venn_svg = "Vivien/reports/junctions_venn.svg",
@@ -163,8 +175,13 @@ server <- function(input, output, session) {
     #   junctions_count_svg="Vivien/reports/junctions_count.svg"
     # ))
     # r$repeatmasker_df = repeatmasker_read("genomes/mm10/annotation/ucsc_repeatmasker.tsv", columns=c("repeatmasker_chrom", "repeatmasker_start", "repeatmasker_end", "repeatmasker_class"))
-    # samples_df = data.frame(path=list.files("Vivien", pattern="*.tlx", full.names=T)) %>%
-    #   dplyr::mutate(sample=gsub("_B400_0", " / ", gsub("_result.tlx", "", basename(path))), group="group1", control=grepl("VI05", path))
+    #
+    #
+    # samples_df = rbind(readr::read_tsv("Vivien/B400_011_metadata_2.txt"), readr::read_tsv("Vivien/B400_012_metadata_complete.txt")) %>%
+    #   dplyr::filter(grepl("49|51|56|58", Library)) %>%
+    #   dplyr::mutate(path=str_glue("Vivien/{lib}_{seq}_result.tlx", lib=Library, seq=Sequencing), sample=paste0(Library, ifelse(grepl("promoter", Description), "-prom", "+prom")), group=gsub(".*(One.*)", "\\1", Description), control=!grepl("promoter", Description)) %>%
+    #   dplyr::mutate(control=F) %>%
+    #   dplyr::select(path, sample, group, control)
     # # r$offtargets_df = offtargets_read("Vivien/offtargets.bed")
     # tlx_df = tlx_read_many(samples_df)
     # tlx_df = tlx_remove_rand_chromosomes(tlx_df)
@@ -172,18 +189,28 @@ server <- function(input, output, session) {
     # tlx_df = tlx_mark_bait_junctions(tlx_df, bait_region)
     # tlx_df = tlx_mark_repeats(tlx_df, r$repeatmasker_df)
     # tlx_df$tlx_is_offtarget = F
-    # r$offtargets_df = NULL
-    # r$baits_df = tlx_identify_baits(tlx_df)
+    # baits_df = tlx_identify_baits(tlx_df)
     #
     # End Vivien's
     #
+
+    # for(p in unique(tlx_df$tlx_path)) {
+    #   tlx_df.p = tlx_df %>%
+    #     dplyr::filter(tlx_path==p) %>%
+    #     dplyr::mutate(strand=ifelse(Strand=="-1", "-", "+"), start=Junction-200, end=Junction+200, score=0)
+    #
+    #   tlx_df.p %>%
+    #     dplyr::select(Rname, start, end, Qname, score, strand) %>%
+    #     readr::write_tsv(file=paste0("Vivien/bed/", tlx_df.p$tlx_sample[1], ".bed"), na="", col_names=F)
+    # }
+
 
     genome_path = file.path(genomes_path, model, paste0(model, ".fa"))
     cytoband_path = file.path(genomes_path, model, "annotation/cytoBand.txt")
 
     offtarget2bait_df = NULL
     if(!is.null(r$offtargets_df)) {
-      offtarget2bait_df = join_offtarget2bait(offtargets_df=r$offtargets_df, baits_df=r$baits_df, genome_path=genome_path)
+      offtarget2bait_df = join_offtarget2bait(offtargets_df=r$offtargets_df, baits_df=baits_df, genome_path=genome_path)
       tlx_df = tlx_mark_offtargets(tlx_df, offtarget2bait_df)
     }
 
@@ -206,18 +233,26 @@ server <- function(input, output, session) {
       height = 960
 
       log("output$junctions_venn")
-      venn_offtarget = list()
-      venn_offtarget[[paste0("Bait chr.\n(", sum(tlx_df$tlx_is_bait_chromosome), ")")]] = tlx_df %>% dplyr::filter(tlx_is_bait_chromosome) %>% .$Qname
-      venn_offtarget[[paste0("Bait region\n(", sum(tlx_df$tlx_is_bait_junction), ")")]] = tlx_df %>% dplyr::filter(tlx_is_bait_junction) %>% .$Qname
-      venn_offtarget[[paste0("Repeats junct.\n(", sum(!is.na(tlx_df$tlx_repeatmasker_class)), ")")]] = tlx_df %>% dplyr::filter(!is.na(tlx_repeatmasker_class)) %>% .$Qname
-      if("tlx_is_offtarget" %in% colnames(tlx_df)) {
-        venn_offtarget[[paste0("Offtarget junct.\n(", sum(tlx_df$tlx_is_offtarget), ")")]] = tlx_df %>% dplyr::filter(tlx_is_offtarget) %>% .$Qname
-      }
+
 
       session$userData$junctions_venn_svg = tempfile(fileext=".svg")
       log("Plot venn ", session$userData$junctions_venn_svg, " (w=", width, " h=", height, ")")
       svg(session$userData$junctions_venn_svg, width=width/72, height=height/72, pointsize=1)
-      plot_venn(venn_offtarget, size=width)
+      pushViewport(plotViewport(layout=grid.layout(1, length(unique(tlx_df$tlx_group)))))
+      for(gr in unique(tlx_df$tlx_group)) {
+        tlx_df.gr = tlx_df %>% dplyr::filter(tlx_group==gr)
+        venn_offtarget = list()
+        venn_offtarget[[paste0("Bait chr.\n(", sum(tlx_df.gr$tlx_is_bait_chromosome), ")")]] = tlx_df.gr %>% dplyr::filter(tlx_is_bait_chromosome) %>% .$Qname
+        venn_offtarget[[paste0("Bait region\n(", sum(tlx_df.gr$tlx_is_bait_junction), ")")]] = tlx_df.gr %>% dplyr::filter(tlx_is_bait_junction) %>% .$Qname
+        venn_offtarget[[paste0("Repeats junct.\n(", sum(!is.na(tlx_df.gr$tlx_repeatmasker_class)), ")")]] = tlx_df.gr %>% dplyr::filter(!is.na(tlx_repeatmasker_class)) %>% .$Qname
+        if("tlx_is_offtarget" %in% colnames(tlx_df.gr)) {
+          venn_offtarget[[paste0("Offtarget junct.\n(", sum(tlx_df.gr$tlx_is_offtarget), ")")]] = tlx_df.gr %>% dplyr::filter(tlx_is_offtarget) %>% .$Qname
+        }
+
+        pushViewport(plotViewport(layout.pos.col=1, layout.pos.row=1))
+        plot_venn(venn_offtarget, main=paste0(gr, " (Total junctions ", nrow(tlx_df.gr), ")"), size=width)
+        popViewport()
+      }
       dev.off()
 
       list(src=normalizePath(session$userData$junctions_venn_svg), contentType='image/svg+xml', width=width, height=height, alt="Junctions venn")
@@ -233,18 +268,36 @@ server <- function(input, output, session) {
       session$userData$junctions_count_svg = tempfile(fileext=".svg")
       log("Plot junctions count ", session$userData$junctions_count_svg, " (w=", width, " h=", height, ")")
       svg(session$userData$junctions_count_svg, width=width/72, height=height/72, pointsize=1)
-      p = tlx_df %>%
+      tlx_df.sum = tlx_df %>%
         dplyr::mutate(Subset=dplyr::case_when(
           tlx_is_bait_junction~"bait peak",
           tlx_is_offtarget~"offtarget peak",
           !is.na(tlx_repeatmasker_class)~"o/w repeat",
           T~"other junctions")) %>%
-          ggplot() +
-            geom_bar(aes(x=forcats::fct_infreq(tlx_sample), fill=Subset)) +
-            theme_classic(base_size=18) +
+        dplyr::group_by(tlx_group, tlx_sample) %>%
+        dplyr::mutate(total_n=n()) %>%
+        dplyr::group_by(tlx_group, tlx_sample, Subset, total_n) %>%
+        dplyr::summarize(subset_n=n())
+
+        gridExtra::grid.arrange(
+          ggplot(tlx_df.sum) +
+            geom_bar(aes(x=forcats::fct_infreq(tlx_sample), y=subset_n, fill=Subset), stat="identity", show.legend=F) +
+            theme_brain() +
             theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1), legend.key.size = unit(20, 'pt')) +
-            labs(x="", fill="Subset")
-        print(p)
+            labs(x="", y="Junctions (absolute)", fill="Subset") +
+
+            facet_wrap(~tlx_group),
+          ggplot(tlx_df.sum) +
+            geom_bar(aes(x=forcats::fct_infreq(tlx_sample), y=subset_n/total_n, fill=Subset), stat="identity") +
+            scale_y_continuous(labels = scales::percent) +
+            theme_brain() +
+            theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1), legend.key.size = unit(20, 'pt')) +
+            theme(legend.position="bottom") +
+            guides(fill=guide_legend(nrow=2, byrow=T)) +
+            labs(x="", y="Junctions (relative)", fill="Subset") +
+            facet_wrap(~tlx_group),
+          ncol=1, heights=c(0.45, 0.55)
+        )
       dev.off()
 
       list(src=normalizePath(session$userData$junctions_count_svg), contentType='image/svg+xml', width=width, height=height, alt="Junctions count")
@@ -277,13 +330,11 @@ server <- function(input, output, session) {
       p = ggplot2::ggplot(tlx_df.ggplot) +
           ggplot2::geom_bar(ggplot2::aes(x=forcats::fct_infreq(tlx_repeatmasker_class), fill=tlx_repeatmasker_class), position="dodge") +
           ggplot2::coord_flip() +
-          ggplot2::labs(x="RepeatMasker class", y="Junctions overlapping with repeats (x1000)") +
-          ggplot2::facet_wrap(~filter, scales="free") +
+          ggplot2::labs(x="", y="Junctions overlapping with repeats (x1000)") +
+          ggplot2::facet_grid(tlx_group~filter, scales="free") +
           # ggplot2::scale_y_continuous(breaks=scale_breaks_sub1k) +
           ggplot2::scale_fill_manual(values=palette_repeats, guide="none") +
-          ggplot2::theme_classic(base_size=18)+
-          ggplot2::theme(strip.background=element_blank()) +
-          ggplot2::theme(axis.text.x=ggplot2::element_text(size=16))
+          theme_brain()
       print(p)
       dev.off()
 
@@ -314,22 +365,40 @@ server <- function(input, output, session) {
     # Circos plot
     #
     output$circos = renderImage({
-      size = pmin(session$clientData$output_circos_width, session$clientData$output_circos_width)
+      groups_n = length(unique(tlx_df$tlx_group))
+      width = session$clientData$output_homology_width
+      height = 960
+      size = ceiling(width/groups_n)
+      # size = pmin(session$clientData$output_circos_width, session$clientData$output_circos_width)
 
-      links_df = macs_df %>% dplyr::inner_join(r$baits_df, by=c("macs_sample"="bait_sample"))
-      if("macs_is_offtarget" %in% colnames(links_df)) {
-        links_df$color = ifelse(links_df$macs_is_offtarget, "#F46D43FF", "#74ADD180")
-      } else {
-        links_df$color = "#74ADD180"
-      }
-      links_df = links_df %>%
-        dplyr::select(chrom1=macs_chrom, start1=macs_start, end1=macs_end, chrom2=bait_chrom, start2=bait_start, end2=bait_end, color)
 
-      # session$userData$circos_svg = "circos.svg"
       session$userData$circos_svg = tempfile(fileext=".svg")
       log("Plot circos ", session$userData$circos_svg, " (w=", size, " h=", size, ")")
-      svg(session$userData$circos_svg, width=size/72, height=size/72, pointsize=1)
-      plot_circos(data=tlx_df %>% dplyr::select(chrom=Rname, start=Rstart, end=Rend), cytoband_path=cytoband_path, links=links_df, cex=size/300)
+      svg(session$userData$circos_svg, width=width/72, height=height/72, pointsize=1)
+
+      layout(matrix(1:groups_n, 1, groups_n))
+      for(gr in unique(tlx_df$tlx_group)) {
+        tlx_df.gr = tlx_df %>% dplyr::filter(tlx_group==gr)
+        macs_df.gr = macs_df %>% dplyr::filter(macs_group==gr)
+        baits_df.gr = baits_df %>% dplyr::distinct(bait_group, .keep_all=T)
+
+        links_df.gr = macs_df.gr %>% dplyr::inner_join(baits_df.gr, by=c("macs_group"="bait_group"))
+        if("macs_is_offtarget" %in% colnames(links_df.gr)) {
+          links_df.gr$color = ifelse(links_df.gr$macs_is_offtarget, "#F46D43FF", "#74ADD180")
+        } else {
+          links_df.gr$color = "#74ADD180"
+        }
+        links_df.gr = links_df.gr %>%
+          dplyr::select(chrom1=macs_chrom, start1=macs_start, end1=macs_end, chrom2=bait_chrom, start2=bait_start, end2=bait_end, color)
+
+        plot_circos(
+          data=tlx_df.gr %>% dplyr::select(chrom=Rname, start=Rstart, end=Rend),
+          title=gr,
+          cytoband_path=cytoband_path,
+          links=links_df.gr,
+          cex=size/300)
+        # popViewport()
+      }
       dev.off()
 
       log("Finished")

@@ -48,7 +48,7 @@ tlx_identify_baits = function(tlx_df, breaksite_size=19) {
   }
 
   baits_df = tlx_df %>%
-    dplyr::group_by(tlx_sample, B_Rname, B_Strand) %>%
+    dplyr::group_by(tlx_group, tlx_sample, B_Rname, B_Strand) %>%
     dplyr::do((function(z){
       misprimed_max = max(z$misprimed-z$uncut)
       if(z$B_Strand[1]<0) bait_start = unique(z$B_Rstart + z$misprimed - misprimed_max-2)
@@ -57,7 +57,7 @@ tlx_identify_baits = function(tlx_df, breaksite_size=19) {
     })(.)) %>%
     dplyr::mutate(bait_strand=ifelse(B_Strand<0, "-", "+")) %>%
     dplyr::ungroup() %>%
-    dplyr::select(bait_sample=tlx_sample, bait_chrom=B_Rname, bait_strand, bait_start, bait_end)
+    dplyr::select(bait_group=tlx_group, bait_sample=tlx_sample, bait_chrom=B_Rname, bait_strand, bait_start, bait_end)
 
   baits_df
 }
@@ -140,7 +140,7 @@ tlx_macs2 = function(tlx_df, qvalue=0.01, pileup=1, extsize=2000, slocal=50000, 
 
   macs_df.all = data.frame()
   for(gr in unique(tlx_df$tlx_group)) {
-    tlx_df.gr = tlx_df %>% dplyr::filter(tlx_group=="group1")
+    tlx_df.gr = tlx_df %>% dplyr::filter(tlx_group==gr)
 
     f_input_bed = tempfile()
     f_control_bed = tempfile()
@@ -165,8 +165,10 @@ tlx_macs2 = function(tlx_df, qvalue=0.01, pileup=1, extsize=2000, slocal=50000, 
         dplyr::mutate(macs_group=gr)
     }
 
-    macs_df.all = rbind(macs_df.all, macs_df)
+    macs_df.all = rbind(macs_df.all, macs_df %>% dplyr::mutate(macs_group=gr))
   }
 
-  macs_df.all %>% dplyr::filter(macs_pileup>=pileup)
+  macs_df.all = macs_df.all %>% dplyr::filter(macs_pileup>=pileup)
+
+  macs_df.all
 }
