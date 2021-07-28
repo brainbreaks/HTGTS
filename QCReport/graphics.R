@@ -39,6 +39,62 @@ theme_brain = function() {
    ggplot2::theme(legend.key.size=unit(20, 'pt'), plot.title=element_text(hjust=0.5), strip.background=element_blank())
 }
 
+plot_macs2_pileups = function(tlx_df, macs_df) {
+    macs_df = macs_df %>% dplyr::mutate(seqnames=macs_chrom, start=macs_start, end=macs_end, macs_group_i=as.numeric(factor(macs_group)))
+    macs_ranges = GenomicRanges::makeGRangesFromDataFrame(macs_df, ignore.strand=T, keep.extra.columns=T)
+
+    tlx_df = tlx_df %>%
+      dplyr::mutate(tlx_group=factor(tlx_group, unique(as.character(tlx_group))))
+
+    tlxsum_df = tlx_df %>%
+      dplyr::group_by(tlx_group, .drop=F) %>%
+      dplyr::summarize(total_n=sum(!tlx_is_bait_junction)) %>%
+      dplyr::ungroup() %>%
+      dplyr::mutate(correction=min(total_n)/total_n)
+
+    macs_reduced_df = as.data.frame(GenomicRanges::reduce(macs_ranges)) %>%
+      dplyr::mutate(reduced_chrom=seqnames, reduced_start=start, reduced_end=end) %>%
+      dplyr::mutate(reduced_hit=paste0(reduced_chrom, ":", reduced_start, "-", reduced_end))
+    macs_reduced_ranges = GenomicRanges::makeGRangesFromDataFrame(macs_reduced_df, keep.extra.columns=T)
+
+    facet_df = macs_df %>%
+      dplyr::ungroup() %>%
+      dplyr::group_by(macs_chrom) %>%
+      dplyr::do((function(z){
+        data.frame(facet_chrom=z$macs_chrom[1], facet_start=seq(0, 1e9, 5e5)) %>%
+          dplyr::mutate(facet_end=facet_start+5e5, seqnames=facet_chrom, start=facet_start, end=facet_end) %>%
+          dplyr::mutate(facet_hit=paste0(facet_chrom, ":", facet_start/1e6, "-", facet_end/1e6, "M"))
+      })(.))
+    facet_ranges = GenomicRanges::makeGRangesFromDataFrame(facet_df, keep.extra.columns=T)
+
+    tlxcov_df = tlx_coverage(tlx_df, group="group")
+    tlxcov_ranges = GenomicRanges::makeGRangesFromDataFrame(tlxcov_df %>% dplyr::mutate(seqnames=tlxcov_chrom, start=tlxcov_start, end=tlxcov_end), keep.extra.columns=T)
+    tlxcov2macsred_df = as.data.frame(mergeByOverlaps(tlxcov_ranges, macs_reduced_ranges))
+    tlxcov2macsred_ranges = GenomicRanges::makeGRangesFromDataFrame(tlxcov2macsred_df %>% dplyr::mutate(seqnames=tlxcov_chrom, start=tlxcov_start, end=tlxcov_end), keep.extra.columns=T)
+    ggplot_df = as.data.frame(mergeByOverlaps(tlxcov2macsred_ranges, facet_ranges)) %>%
+      dplyr::inner_join(tlxsum_df, by="tlx_group") %>%
+      dplyr::mutate(tlxcov_pileup=tlxcov_pileup*correction) %>%
+      dplyr::arrange(tlxcov_chrom, tlxcov_start) %>%
+      dplyr::group_by(facet_hit) %>%
+      dplyr::filter(cumsum(tlxcov_pileup)>0) %>%
+      dplyr::ungroup()
+    ggplot_reduced_df = ggplot_df %>%
+      dplyr::group_by(facet_hit) %>%
+      dplyr::mutate(ymin=-max(tlxcov_pileup)*0.1, ymax=-max(tlxcov_pileup)*0.05) %>%
+      dplyr::ungroup() %>%
+      dplyr::distinct(facet_hit, reduced_chrom, reduced_start, reduced_end, ymin, ymax)
+
+    ggplot(ggplot_df) +
+      geom_step(aes(x=tlxcov_start, y=tlxcov_pileup, color=tlx_group)) +
+      geom_rect(aes(xmin=reduced_start, xmax=reduced_end, ymin=ymin, ymax=ymax), data=ggplot_reduced_df) +
+      labs(x="", y="", color="Group") +
+      facet_wrap(~facet_hit, scales="free") +
+      ggplot2::scale_x_continuous(breaks=scale_breaks) +
+      theme_brain() +
+      theme(legend.position="bottom") +
+      guides(fill=guide_legend(nrow=2, byrow=T))
+}
+
 plot_homology = function(tlx_df) {
   homology_df = tlx_df %>%
     dplyr::group_by(tlx_group, tlx_sample, B_Rname) %>%

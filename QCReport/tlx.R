@@ -37,6 +37,33 @@ tlx_read_many = function(samples_df) {
   tlx_df.all
 }
 
+tlx_coverage = function(tlx_df, group=c("none", "group", "sample", "path")) {
+  tlx_coverage_ = function(x) {
+    x_ranges = GenomicRanges::makeGRangesFromDataFrame(x %>% dplyr::mutate(seqnames=Rname, start=Rstart, end=Rend), ignore.strand=T)
+    cov_ranges = as(GenomicRanges::coverage(x_ranges), "GRanges")
+    as.data.frame(cov_ranges) %>%
+      dplyr::rename(tlxcov_chrom="seqnames", tlxcov_start="start", tlxcov_end="end", tlxcov_pileup="score") %>%
+      dplyr::select(matches("tlxcov_"))
+  }
+
+  if(group=="none") {
+    return(tlx_coverage_(tlx_df))
+  }
+  if(group=="group") {
+    return(tlx_df %>% group_by(tlx_group) %>% do(tlx_coverage_(.)) %>% dplyr::ungroup())
+  }
+
+  if(group=="sample") {
+    return(tlx_df %>% group_by(tlx_group, tlx_sample) %>% do(tlx_coverage_(.)) %>% dplyr::ungroup())
+  }
+
+  if(group=="path") {
+    return(tlx_df %>% group_by(tlx_group, tlx_sample, tlx_path) %>% do(tlx_coverage_(.)) %>% dplyr::ungroup())
+  }
+
+  stop("Unknown group")
+}
+
 tlx_remove_rand_chromosomes = function(tlx_df) {
   tlx_df %>%
     dplyr::filter(Rname %in% paste0("chr", c(1:40, "X", "Y")))
@@ -61,6 +88,43 @@ tlx_identify_baits = function(tlx_df, breaksite_size=19) {
     dplyr::select(bait_group=tlx_group, bait_sample=tlx_sample, bait_chrom=B_Rname, bait_strand, bait_start, bait_end)
 
   baits_df
+}
+
+
+tlx_test_hits = function(tlx_df, hits_ranges) {
+  hits_df = as.data.frame(hits_rages) %>% dplyr::mutate(compare_chrom=seqnames, compare_start=start, compare_end=end)
+  hits_ranges = GenomicRanges::makeGRangesFromDataFrame(hits_df, keep.extra.columns=T)
+  tlx_ranges  = GenomicRanges::makeGRangesFromDataFrame(tlx_df %>% dplyr::mutate(seqnames=Rname, start=Rstart, end=Rend), ignore.strand=T, keep.extra.columns=T)
+  tlxsum_df = tlx_df %>%
+    dplyr::group_by(tlx_group, .drop=F) %>%
+    dplyr::summarize(total_n=sum(!tlx_is_bait_junction)) %>%
+    dplyr::ungroup() %>%
+    dplyr::mutate(correction=min(total_n)/total_n)
+
+  as.data.frame(IRanges::mergeByOverlaps(hits_ranges, tlx_ranges)) %>%
+    dplyr::inner_join(tlxsum_df, by="tlx_group") %>%
+    dplyr::group_by(compare_chrom, compare_start, compare_end, tlx_group, total_n, .drop=F) %>%
+    dplyr::summarize(n=n(), total_n=tidyr::replace_na(total_n[1], 0)) %>%
+    dplyr::group_by(compare_chrom, compare_start, compare_end) %>%
+    dplyr::do((function(z){
+      zz<<-z
+      do.call(rbind, apply(combn(1:nrow(z), 2), 2, function(cgr) {
+        zz.cgr<<-cgr
+        i.contignency = as.data.frame(z[cgr, c("n", "total_n")])
+        i.test = fisher.test(i.contignency)
+        i.meta = z[cgr,] %>%
+          dplyr::mutate(group_id=1:n()) %>%
+          reshape2::melt(measure.vars=c("total_n", "n")) %>%
+          dplyr::mutate(variable=paste0("compare_", variable, group_id)) %>%
+          tibble::column_to_rownames("variable") %>%
+          dplyr::select(value) %>%
+          t() %>%
+          data.frame()
+
+        cbind(compare_group1=z$tlx_group[cgr[1]], compare_group2=z$tlx_group[cgr[2]], compare_pvalue=i.test$p.value, compare_odds=i.test$estimate, i.meta)
+      }))
+    })(.)) %>%
+    data.frame()
 }
 
 tlx_mark_bait_chromosome = function(tlx_df) {

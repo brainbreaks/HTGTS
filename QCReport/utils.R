@@ -40,6 +40,10 @@ macs_cols = cols(
   macs_pileup=col_double(), macs_pvalue=col_double(), macs_fc=col_double(), macs_qvalue=col_double(), macs_name=col_character(), macs_comment=col_character()
 )
 
+macs_blank = function() {
+  blank_tibble(macs_cols) %>% dplyr::mutate(macs_group=NA_character_)
+}
+
 bed_read = function(path) {
   bed = rtracklayer::import.bed(path)
   GenomicRanges::start(bed) = GenomicRanges::start(bed)-1

@@ -12,7 +12,7 @@ source("utils.R")
 source("tlx.R")
 source("graphics.R")
 
-download_link = function(id, data, file) {
+download_link = function(data, file) {
   if(!is.null(data) && nrow(data)>0) {
     readr::write_tsv(data, file=file, na="")
   }
@@ -24,6 +24,7 @@ server <- function(input, output, session) {
     hidden_options=T,
     baits_df=NULL,
     tlx_df=tlx_blank(),
+    macs_df=macs_blank(),
     offtargets_df=NULL,
     tlx_num=0,
     repeatmasker_df=NULL,
@@ -60,16 +61,17 @@ server <- function(input, output, session) {
     group_i = r$tlx_num+1
     input_id = paste0("tlx_input", group_i)
     control_id = paste0("tlx_control", group_i)
+    group_id = paste("group", group_i)
 
     shiny::insertUI("#tlx_files", where="beforeEnd", immediate=T, ui=shiny::div(class="tlx_group",
       fileInput(input_id, label="Input", placeholder="No file selected", multiple=T),
-      fileInput(control_id, label="Control", placeholder="No file selected", multiple=T))
-    )
+      fileInput(control_id, label="Control", placeholder="No file selected", multiple=T),
+      shiny::downloadLink(paste0("download_pileup_", group_id), "Download WIG")
+    ))
 
     session$userData[[paste0("tlx", group_i, "_observer")]] = observeEvent(c(input[[input_id]], input[[control_id]]), {
       log(paste0("tlx", group_i, "_observer"))
 
-      group_id = paste("group", group_i)
       tlx_df = isolate(r$tlx_df %>% dplyr::filter(tlx_group!=group_id))
       for(field_id2 in c(input_id, control_id)) {
         if(is.null(input[[field_id2]])) next
@@ -90,13 +92,22 @@ server <- function(input, output, session) {
       }
 
       r$tlx_df = tlx_df
+
+      shinyjs::show(paste0("download_pileup_", group_id))
     }, ignoreInit=T)
 
     r$tlx_num = r$tlx_num + 1
     shinyjs::toggle("tlx_del", condition=r$tlx_num>0)
 
-    shiny::updateSelectInput(inputId="compare_group1", choices=unique(r$tlx_df$tlx_group))
-    shiny::updateSelectInput(inputId="compare_group2", choices=unique(r$tlx_df$tlx_group))
+    shinyjs::hide(paste0("download_pileup_", group_id))
+    output[[paste0("download_pileup_", group_id)]] = downloadHandler(filename=paste0(group_id, ".wig"),
+      content = function(file) {
+        log("output$download_bigwig")
+        tlx_coverage(r$tlx_df %>% dplyr::filter(tlx_group==group_id), group="none") %>%
+          dplyr::select(tlxcov_chrom, tlxcov_start, tlxcov_end, tlxcov_pileup) %>%
+          readr::write_tsv(file=file, col_names=F)
+      }
+    )
   }, ignoreNULL=F)
 
 
@@ -120,8 +131,6 @@ server <- function(input, output, session) {
 
     r$tlx_num = r$tlx_num - 1
     shinyjs::toggle("tlx_del", condition=r$tlx_num>0)
-    shiny::updateSelectInput(inputId="compare_group1", choices=unique(tlx_df$tlx_group))
-    shiny::updateSelectInput(inputId="compare_group2", choices=unique(tlx_df$tlx_group))
   }, ignoreInit=T)
 
 
@@ -138,16 +147,9 @@ server <- function(input, output, session) {
     r$offtargets_df = offtargets_read(input$offtargets$datapath)
   }, ignoreInit=T)
 
-  observeEvent(input$compare_calculate, {
-    req(!is.null(isolate(r$macs_df)))
-    log("input$compare_calculate")
-
-
-  })
-
   observeEvent(input$calculate, {
-    req(!is.null(isolate(r$tlx_df)))
     log("input$calculate")
+    req(!is.null(r$tlx_df) && nrow(r$tlx_df))
 
     exclude_repeats = shiny::isolate(input$exclude_repeats)
     exclude_bait_region = shiny::isolate(input$exclude_bait_region)
@@ -175,7 +177,8 @@ server <- function(input, output, session) {
     #   junctions_venn_svg = "Vivien/reports/junctions_venn.svg",
     #   homology_svg = "Vivien/reports/homology_profile.svg",
     #   circos_svg = "Vivien/reports/circos.svg",
-    #   junctions_count_svg="Vivien/reports/junctions_count.svg"
+    #   junctions_count_svg="Vivien/reports/junctions_count.svg",
+    #   compare_pileup_svg="Vivien/reports/compare_pileup.svg"
     # ))
     # r$repeatmasker_df = repeatmasker_read("genomes/mm10/annotation/ucsc_repeatmasker.tsv", columns=c("repeatmasker_chrom", "repeatmasker_start", "repeatmasker_end", "repeatmasker_class"))
     #
@@ -224,9 +227,9 @@ server <- function(input, output, session) {
       tlx_df = tlx_mark_offtargets(tlx_df, offtarget2bait_df)
     }
 
-    macs_df = tlx_macs2(tlx_df, extsize=extsize, qvalue=qvalue, pileup=pileup, slocal=slocal, llocal=llocal, exclude_bait_region=exclude_bait_region, exclude_repeats=exclude_repeats)
+    r$macs_df = tlx_macs2(tlx_df, extsize=extsize, qvalue=qvalue, pileup=pileup, slocal=slocal, llocal=llocal, exclude_bait_region=exclude_bait_region, exclude_repeats=exclude_repeats)
     if(!is.null(offtarget2bait_df)) {
-      macs_df = macs_df %>%
+      r$macs_df = r$macs_df %>%
         dplyr::left_join(offtarget2bait_df, by=c("macs_sample"="bait_sample")) %>%
         dplyr::group_by(macs_chrom, macs_start, macs_end, bait_chrom, bait_start, bait_end, macs_sample) %>%
         dplyr::summarize(macs_is_offtarget=any(offtarget_chrom==macs_chrom & (offtarget_start>=macs_start & offtarget_start<=macs_end | offtarget_end>=macs_start & offtarget_start<=macs_end))) %>%
@@ -389,7 +392,7 @@ server <- function(input, output, session) {
       layout(matrix(1:groups_n, groups_n, 1))
       for(gr in unique(tlx_df$tlx_group)) {
         tlx_df.gr = tlx_df %>% dplyr::filter(tlx_group==gr)
-        macs_df.gr = macs_df %>% dplyr::filter(macs_group==gr)
+        macs_df.gr = r$macs_df %>% dplyr::filter(macs_group==gr)
         baits_df.gr = baits_df %>% dplyr::distinct(bait_group, .keep_all=T)
 
         links_df.gr = macs_df.gr %>% dplyr::inner_join(baits_df.gr, by=c("macs_group"="bait_group"))
@@ -415,6 +418,30 @@ server <- function(input, output, session) {
 
       list(src=normalizePath(session$userData$circos_svg), contentType='image/svg+xml', width=width, height=height, alt="TLX circos plot")
     }, deleteFile=F)
-  }, ignoreInit=T)
 
+
+    #
+    # Compare MACS hits across groups
+    #
+    output$compare_pileup = renderImage({
+      log("output$compare_pileup")
+
+      width = session$clientData$output_compare_pileup_width
+      height = 960
+
+      session$userData$compare_pileup_svg = tempfile(fileext=".svg")
+      log(paste0("Plot compare plot ", session$userData$compare_pileup_svg, " (w=", width, " h=", height, ")"))
+      svg(session$userData$compare_pileup_svg, width=width/72, height=height/72, pointsize=1)
+      print(plot_macs2_pileups(tlx_df, macs_df))
+      dev.off()
+      list(src=normalizePath(session$userData$compare_pileup_svg), contentType='image/svg+xml', width=width, height=height, alt="Compare pileups for MACS2 hits")
+      #
+      # reduced2tlx_df %>%
+      #   dplyr::filter(compare_pvalue<=0.05)
+      #
+      # macs2tlx_df %>%
+      #   dplyr::group_by(reduced_id, tlx_group) %>%
+      #   dplyr::summarize(n=n())
+    }, deleteFile=F)
+  })
 }
