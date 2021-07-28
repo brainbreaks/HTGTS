@@ -15,8 +15,9 @@ tlx_cols = cols(
 )
 
 tlx_blank = function() {
-  as.data.frame(t(sapply(names(tlx_cols$cols), function(z) NA))) %>%
-    dplyr::mutate(tlx_sample=NA, tlx_path=NA, tlx_group=NA, tlx_control=NA) %>%
+  blank_tibble(tlx_cols) %>%
+    dplyr::mutate(tlx_sample=NA_character_, tlx_path=NA_character_, tlx_group=NA_character_, tlx_control=NA) %>%
+    dplyr::mutate(tlx_is_bait_chromosome=NA, tlx_is_bait_junction=NA, tlx_is_offtarget=NA) %>%
     dplyr::slice(0)
 }
 

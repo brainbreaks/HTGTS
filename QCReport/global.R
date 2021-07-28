@@ -12,6 +12,11 @@ source("graphics.R")
 options(shiny.maxRequestSize=5*1024^3)
 options(shiny.sanitize.errors = TRUE)
 
+# Remove all VennDiagram report logs
+for(p in list.files(pattern="^VennDiagram.*log$", full.names=T)) {
+  file.remove(p)
+}
+
 # baits_df = readr::read_tsv("data/baits.tsv")
 # samples_df = readr::read_tsv("data/samples.tsv")
 # offtargets_df = readr::read_tsv("data/offtargets.tsv")
@@ -19,8 +24,9 @@ options(shiny.sanitize.errors = TRUE)
 # genomes_path = file.path("..", genomes_path)
 # genomes_path = Sys.getenv(x="GENOME_DB", unset=".")
 # genomes_path = "genomes"
-genomes_path = "../genomes"
+genomes_path = "./genomes"
 # for(g in c("mm9", "mm10", "hg19")) {
+#   file.exists()
 #   repeatmasker_df = repeatmasker_read(file.path(genomes_path, g, "annotation/ucsc_repeatmasker.tsv"))
 #   save(repeatmasker_df, file=paste0("tmp/", g, "_repeatmasker_df.rda"))
 # }

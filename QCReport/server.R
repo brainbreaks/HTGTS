@@ -76,7 +76,9 @@ server <- function(input, output, session) {
         if(length(input[[field_id2]][,1])==0) next
 
         for(i in 1:length(input[[field_id2]][,1])) {
-          tlx_df = rbind(tlx_df, tlx_read(input[[field_id2]][[i, "datapath"]], sample=basename(input[[field_id2]][[i, "name"]]), group=group_id, control=grepl("control", field_id2)))
+          tlx_df.i = tlx_read(input[[field_id2]][[i, "datapath"]], sample=basename(input[[field_id2]][[i, "name"]]), group=group_id, control=grepl("control", field_id2)) %>%
+            dplyr::mutate(tlx_sample=gsub("(_result)?\\.tlx$", "", tlx_sample))
+          tlx_df = dplyr::bind_rows(tlx_df, tlx_df.i)
         }
       }
 
@@ -86,6 +88,7 @@ server <- function(input, output, session) {
         tlx_df = tlx_mark_bait_junctions(tlx_df, isolate(input$bait_region))
         tlx_df$tlx_is_offtarget = F
       }
+
       r$tlx_df = tlx_df
     }, ignoreInit=T)
 
@@ -205,6 +208,13 @@ server <- function(input, output, session) {
     # }
 
 
+    groups_n = length(unique(tlx_df$tlx_group))
+    if(groups_n>1) {
+      groups_grid = matrix(1:(ceiling(groups_n/2)*2), ncol=2, byrow=T)
+    } else {
+      groups_grid = matrix(1)
+    }
+
     genome_path = file.path(genomes_path, model, paste0(model, ".fa"))
     cytoband_path = file.path(genomes_path, model, "annotation/cytoBand.txt")
 
@@ -238,8 +248,11 @@ server <- function(input, output, session) {
       session$userData$junctions_venn_svg = tempfile(fileext=".svg")
       log("Plot venn ", session$userData$junctions_venn_svg, " (w=", width, " h=", height, ")")
       svg(session$userData$junctions_venn_svg, width=width/72, height=height/72, pointsize=1)
-      pushViewport(plotViewport(layout=grid.layout(1, length(unique(tlx_df$tlx_group)))))
+      pushViewport(plotViewport(layout=grid.layout(nrow=nrow(groups_grid), ncol=ncol(groups_grid))))
       for(gr in unique(tlx_df$tlx_group)) {
+        gr_i = which(gr==unique(tlx_df$tlx_group))
+        gr_pos = which(groups_grid==gr_i, arr.ind=T)
+
         tlx_df.gr = tlx_df %>% dplyr::filter(tlx_group==gr)
         venn_offtarget = list()
         venn_offtarget[[paste0("Bait chr.\n(", sum(tlx_df.gr$tlx_is_bait_chromosome), ")")]] = tlx_df.gr %>% dplyr::filter(tlx_is_bait_chromosome) %>% .$Qname
@@ -249,8 +262,9 @@ server <- function(input, output, session) {
           venn_offtarget[[paste0("Offtarget junct.\n(", sum(tlx_df.gr$tlx_is_offtarget), ")")]] = tlx_df.gr %>% dplyr::filter(tlx_is_offtarget) %>% .$Qname
         }
 
-        pushViewport(plotViewport(layout.pos.col=1, layout.pos.row=1))
-        plot_venn(venn_offtarget, main=paste0(gr, " (Total junctions ", nrow(tlx_df.gr), ")"), size=width)
+        pushViewport(plotViewport(layout.pos.row=gr_pos[1], layout.pos.col=gr_pos[2]))
+        main = paste0(gr, " (Total junctions ", nrow(tlx_df.gr), ")")
+        plot_venn(venn_offtarget, main=gr, size=width/ncol(groups_grid))
         popViewport()
       }
       dev.off()
@@ -281,21 +295,20 @@ server <- function(input, output, session) {
 
         gridExtra::grid.arrange(
           ggplot(tlx_df.sum) +
-            geom_bar(aes(x=forcats::fct_infreq(tlx_sample), y=subset_n, fill=Subset), stat="identity", show.legend=F) +
+            geom_bar(aes(x=tlx_sample, y=subset_n, fill=Subset), stat="identity", show.legend=F) +
             theme_brain() +
             theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1), legend.key.size = unit(20, 'pt')) +
             labs(x="", y="Junctions (absolute)", fill="Subset") +
-
-            facet_wrap(~tlx_group),
+            facet_wrap(~tlx_group, scales="free_x"),
           ggplot(tlx_df.sum) +
-            geom_bar(aes(x=forcats::fct_infreq(tlx_sample), y=subset_n/total_n, fill=Subset), stat="identity") +
+            geom_bar(aes(x=tlx_sample, y=subset_n/total_n, fill=Subset), stat="identity") +
             scale_y_continuous(labels = scales::percent) +
             theme_brain() +
             theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1), legend.key.size = unit(20, 'pt')) +
             theme(legend.position="bottom") +
             guides(fill=guide_legend(nrow=2, byrow=T)) +
             labs(x="", y="Junctions (relative)", fill="Subset") +
-            facet_wrap(~tlx_group),
+            facet_wrap(~tlx_group, scales="free_x"),
           ncol=1, heights=c(0.45, 0.55)
         )
       dev.off()
@@ -365,18 +378,15 @@ server <- function(input, output, session) {
     # Circos plot
     #
     output$circos = renderImage({
-      groups_n = length(unique(tlx_df$tlx_group))
-      width = session$clientData$output_homology_width
-      height = 960
-      size = ceiling(width/groups_n)
-      # size = pmin(session$clientData$output_circos_width, session$clientData$output_circos_width)
-
+      width = session$clientData$output_circos_width
+      height = (width + 100) * groups_n
+      log(groups_n)
 
       session$userData$circos_svg = tempfile(fileext=".svg")
-      log("Plot circos ", session$userData$circos_svg, " (w=", size, " h=", size, ")")
+      log("Plot circos ", session$userData$circos_svg, " (w=", width, " h=", height, ")")
       svg(session$userData$circos_svg, width=width/72, height=height/72, pointsize=1)
 
-      layout(matrix(1:groups_n, 1, groups_n))
+      layout(matrix(1:groups_n, groups_n, 1))
       for(gr in unique(tlx_df$tlx_group)) {
         tlx_df.gr = tlx_df %>% dplyr::filter(tlx_group==gr)
         macs_df.gr = macs_df %>% dplyr::filter(macs_group==gr)
@@ -396,14 +406,14 @@ server <- function(input, output, session) {
           title=gr,
           cytoband_path=cytoband_path,
           links=links_df.gr,
-          cex=size/300)
+          cex=width/300)
         # popViewport()
       }
       dev.off()
 
       log("Finished")
 
-      list(src=normalizePath(session$userData$circos_svg), contentType='image/svg+xml', width=size, height=size, alt="TLX circos plot")
+      list(src=normalizePath(session$userData$circos_svg), contentType='image/svg+xml', width=width, height=height, alt="TLX circos plot")
     }, deleteFile=F)
   }, ignoreInit=T)
 

@@ -6,7 +6,7 @@ library(shinycssloaders)
 
 ui <- shiny::fluidPage(
   shinyjs::useShinyjs(),
-  shiny::titlePanel("title panel"),
+  shiny::titlePanel("HTGTS postprocess"),
 
   shiny::sidebarLayout(
     shiny::sidebarPanel(

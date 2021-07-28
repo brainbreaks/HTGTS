@@ -9,6 +9,19 @@ log = function(..., collapse=NULL) {
   cat(file=stderr(), msg)
 }
 
+blank_tibble = function(cols) {
+  stopifnot(class(tlx_cols)=="col_spec")
+
+  x = tibble::tibble()
+  for(n in names(cols$cols)) {
+    n_class = class(cols$cols[[n]])
+    n_type = match.fun(gsub("collector_", "", n_class[grepl("collector_", n_class)]))
+    x[[n]] = n_type()
+  }
+
+  x
+}
+
 log_input = function(input) {
   vals = reactiveValuesToList(input)
   vals_filter = !grepl("shinyActionButtonValue", sapply(vals, function(z) {paste(class(z), collapse="|")}))

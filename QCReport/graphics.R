@@ -60,7 +60,7 @@ plot_homology = function(tlx_df) {
   p = list()
   for(gr in unique(homology_df$tlx_group)) {
     homology_df.gr = homology_df %>% dplyr::filter(tlx_group==gr)
-    homology_ylim = homology_df %>%
+    homology_ylim = homology_df.gr %>%
       dplyr::group_by(tlx_group) %>%
       dplyr::summarize(homology_abundance_rel=max(abs(homology_abundance_rel)))
     p[[length(p)+1]] = ggplot(homology_df.gr) +
