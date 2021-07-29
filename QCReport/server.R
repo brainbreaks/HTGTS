@@ -46,7 +46,15 @@ server <- function(input, output, session) {
   output$download_baits <- downloadHandler(filename="baits.tsv",
     content = function(file) {
       log("output$download_baits ")
-      download_link(id="download_baits", data=r$baits_df, file=file)
+      download_link(data=r$baits_df, file=file)
+    }
+  )
+
+
+  output$download_macs2 = downloadHandler(filename="macs2.tsv",
+    content = function(file) {
+      log("output$download_macs2")
+      download_link(data=r$macs_df, file=file)
     }
   )
 
@@ -63,10 +71,13 @@ server <- function(input, output, session) {
     control_id = paste0("tlx_control", group_i)
     group_id = paste("group", group_i)
 
-    shiny::insertUI("#tlx_files", where="beforeEnd", immediate=T, ui=shiny::div(class="tlx_group",
+    shiny::insertUI("#tlx_files", where="beforeEnd", immediate=T, ui=shiny::div(class="tlx-group",
       fileInput(input_id, label="Input", placeholder="No file selected", multiple=T),
+      shiny::downloadLink(paste0("download_pileup_", input_id), "wig"),
+      shiny::downloadLink(paste0("download_bed_", input_id), "bed"),
       fileInput(control_id, label="Control", placeholder="No file selected", multiple=T),
-      shiny::downloadLink(paste0("download_pileup_", group_id), "Download WIG")
+      shiny::downloadLink(paste0("download_pileup_", control_id), "wig"),
+      shiny::downloadLink(paste0("download_bed_", control_id), "bed"),
     ))
 
     session$userData[[paste0("tlx", group_i, "_observer")]] = observeEvent(c(input[[input_id]], input[[control_id]]), {
@@ -93,21 +104,53 @@ server <- function(input, output, session) {
 
       r$tlx_df = tlx_df
 
-      shinyjs::show(paste0("download_pileup_", group_id))
+      for(field_id in c(input_id, control_id)) {
+        shinyjs::show(paste0("download_pileup_", field_id))
+        shinyjs::show(paste0("download_bed_", field_id))
+      }
     }, ignoreInit=T)
 
     r$tlx_num = r$tlx_num + 1
     shinyjs::toggle("tlx_del", condition=r$tlx_num>0)
 
-    shinyjs::hide(paste0("download_pileup_", group_id))
-    output[[paste0("download_pileup_", group_id)]] = downloadHandler(filename=paste0(group_id, ".wig"),
-      content = function(file) {
-        log("output$download_bigwig")
-        tlx_coverage(r$tlx_df %>% dplyr::filter(tlx_group==group_id), group="none") %>%
-          dplyr::select(tlxcov_chrom, tlxcov_start, tlxcov_end, tlxcov_pileup) %>%
-          readr::write_tsv(file=file, col_names=F)
-      }
-    )
+    for(field_id in c(input_id, control_id)) {
+      shinyjs::hide(paste0("download_pileup_", field_id))
+      shinyjs::hide(paste0("download_bed_", field_id))
+    }
+
+    # @ todo: this should be possible to put into loop (be carefull about context!!!)
+    output[[paste0("download_pileup_", input_id)]] = downloadHandler(filename=paste0(input_id, ".wig"),
+      content=function(file) {
+          log("input$download_pileup_", input_id)
+          log(group_id)
+          tlx_df.f = r$tlx_df %>% dplyr::filter(!tlx_control & tlx_group==group_id)
+          tlx_write_wig(tlx_df.f, file=file, extsize=input$extsize)
+    })
+
+    output[[paste0("download_bed_", input_id)]] = downloadHandler(filename=paste0(input_id, ".bed"),
+      content=function(file) {
+        log("input$download_bed_", input_id)
+          log(group_id)
+        tlx_df.f = r$tlx_df %>% dplyr::filter(!tlx_control & tlx_group==group_id)
+        tlx_write_bed(tlx_df.f, file=file)
+      })
+
+    output[[paste0("download_pileup_", control_id)]] = downloadHandler(filename=paste0(control_id, ".wig"),
+      content=function(file) {
+          log("input$download_pileup_", control_id)
+          log(group_id)
+          tlx_df.f = r$tlx_df %>% dplyr::filter(tlx_control & tlx_group==group_id)
+          tlx_write_wig(tlx_df.f, file=file, extsize=input$extsize)
+    })
+
+    output[[paste0("download_bed_", control_id)]] = downloadHandler(filename=paste0(control_id, ".bed"),
+      content=function(file) {
+        log("input$download_bed_", control_id)
+        log(group_id)
+        tlx_df.f = r$tlx_df %>% dplyr::filter(tlx_control & tlx_group==group_id)
+        tlx_write_bed(tlx_df.f, file=file)
+      })
+
   }, ignoreNULL=F)
 
 
@@ -126,7 +169,7 @@ server <- function(input, output, session) {
       }
     }
 
-    shiny::removeUI(selector=".tlx_group:last-of-type")
+    shiny::removeUI(selector=".tlx-group:last-of-type")
     session$userData[[paste0("tlx", group_i, "_observer")]]$destroy()
 
     r$tlx_num = r$tlx_num - 1
@@ -137,6 +180,11 @@ server <- function(input, output, session) {
   observeEvent(input$model, {
     log("input$model")
     r$repeatmasker_df = repeatmasker_read(file.path(genomes_path, input$model, "annotation/ucsc_repeatmasker.tsv"), columns=c("repeatmasker_chrom", "repeatmasker_start", "repeatmasker_end", "repeatmasker_class"))
+
+    cytoband_path = file.path(genomes_path, input$model, "annotation/cytoBand.txt")
+    cytoband = circlize::read.cytoband(cytoband_path)
+    shiny::updateSelectInput(inputId="circos_chromosomes", choices=cytoband$chromosome, selected=c())
+
     log("Repeatmasker file loaded!")
   })
 
@@ -160,18 +208,25 @@ server <- function(input, output, session) {
     llocal = shiny::isolate(input$llocal)
     model = shiny::isolate(input$model)
 
+    genome_path = file.path(genomes_path, model, paste0(model, ".fa"))
+    cytoband_path = file.path(genomes_path, model, "annotation/cytoBand.txt")
+
+    circos_chromosomes = shiny::isolate(input$circos_chromosomes)
+    if(length(circos_chromosomes)==0) {
+      cytoband = circlize::read.cytoband(cytoband_path)
+      circos_chromosomes = cytoband$chromosome
+    }
+
     log_input(input)
 
     tlx_df = tlx_mark_repeats(shiny::isolate(r$tlx_df), r$repeatmasker_df)
     baits_df = shiny::isolate(r$baits_df)
 
-
-
     #
     # Vivien's
     #
     # setwd("/home/s215v/Workspace/HTGTS/QCReport")
-    # r = list(); width = 500; height=500; junsize = 300; pileup=5; exclude_repeats = F; exclude_bait_region = T; bait_region = 500000; extsize = 2000; qvalue = 0.001; slocal = 1000; llocal = 10000000; model = "mm10"; genomes_path = "/home/s215v/Workspace/HTGTS/genomes"
+    # r = list(); width = 500; height=500;  pileup=5; exclude_repeats = F; exclude_bait_region = T; bait_region = 500000; extsize = 2000; qvalue = 0.001; slocal = 1000; llocal = 10000000; model = "mm10"; genomes_path = "/home/s215v/Workspace/HTGTS/genomes"
     # session = list(userData=list(
     #   repeats_summary_svg="Vivien/reports/repeats_summary.svg",
     #   junctions_venn_svg = "Vivien/reports/junctions_venn.svg",
@@ -182,6 +237,9 @@ server <- function(input, output, session) {
     # ))
     # r$repeatmasker_df = repeatmasker_read("genomes/mm10/annotation/ucsc_repeatmasker.tsv", columns=c("repeatmasker_chrom", "repeatmasker_start", "repeatmasker_end", "repeatmasker_class"))
     #
+    # cytoband_path = file.path(genomes_path, model, "annotation/cytoBand.txt")
+    # cytoband = circlize::read.cytoband(cytoband_path)
+    # circos_chromosomes = cytoband$chromosome
     #
     # samples_df = rbind(readr::read_tsv("Vivien/B400_011_metadata_2.txt"), readr::read_tsv("Vivien/B400_012_metadata_complete.txt")) %>%
     #   dplyr::filter(grepl("49|51|56|58", Library)) %>%
@@ -217,9 +275,6 @@ server <- function(input, output, session) {
     } else {
       groups_grid = matrix(1)
     }
-
-    genome_path = file.path(genomes_path, model, paste0(model, ".fa"))
-    cytoband_path = file.path(genomes_path, model, "annotation/cytoBand.txt")
 
     offtarget2bait_df = NULL
     if(!is.null(r$offtargets_df)) {
@@ -408,6 +463,7 @@ server <- function(input, output, session) {
           data=tlx_df.gr %>% dplyr::select(chrom=Rname, start=Rstart, end=Rend),
           title=gr,
           cytoband_path=cytoband_path,
+          chromosomes=circos_chromosomes,
           links=links_df.gr,
           cex=width/300)
         # popViewport()
@@ -432,7 +488,7 @@ server <- function(input, output, session) {
       session$userData$compare_pileup_svg = tempfile(fileext=".svg")
       log(paste0("Plot compare plot ", session$userData$compare_pileup_svg, " (w=", width, " h=", height, ")"))
       svg(session$userData$compare_pileup_svg, width=width/72, height=height/72, pointsize=1)
-      print(plot_macs2_pileups(tlx_df, macs_df))
+      print(plot_macs2_pileups(tlx_df, r$macs_df))
       dev.off()
       list(src=normalizePath(session$userData$compare_pileup_svg), contentType='image/svg+xml', width=width, height=height, alt="Compare pileups for MACS2 hits")
       #

@@ -4,9 +4,15 @@ library(shiny)
 library(dqshiny)
 library(shinycssloaders)
 
+
 ui <- shiny::fluidPage(
   shinyjs::useShinyjs(),
   shiny::titlePanel("HTGTS postprocess"),
+  shiny::HTML("<style> .tlx-group .shiny-file-input-progress { margin-bottom: 1px !important; } </style>"),
+  shiny::HTML("<style> .tlx-group .shiny-file-input-progress { height: 15px !important; } </style>"),
+  shiny::HTML("<style> .tlx-group .shiny-input-container { margin-bottom: 1px !important; } </style>"),
+
+
 
   shiny::sidebarLayout(
     shiny::sidebarPanel(
@@ -22,12 +28,13 @@ ui <- shiny::fluidPage(
       shiny::selectInput("model", label="Model", selected="mm10", choices=c("mm10", "hg19")),
       shiny::numericInput("qvalue", label="MACS2 qvalue", value=0.001),
       shiny::numericInput("pileup", label="MACS2 smallest pileup to call a peak", value=5),
+      shiny::selectInput("circos_chromosomes", label="Chromosomes", choices=c(), multiple=T),
 
 
       shiny::actionLink("advanced_hide", "advanced options"),
       shinyjs::hidden(
         shiny::wellPanel(id="advanced_panel",
-          shiny::checkboxInput("exclude_repeats", label="Exclude repeats", value=T),
+          shiny::checkboxInput("exclude_repeats", label="Exclude repeats", value=F),
           shiny::fluidRow(
             shiny::column(2, shiny::checkboxInput("exclude_bait_region", label="Exclude bait region", value=T)),
             shiny::column(10, shiny::numericInput("bait_region", label="", value=500000))
@@ -60,6 +67,7 @@ ui <- shiny::fluidPage(
         ),
         shiny::tabPanel(
           "Overview",
+        shiny::downloadLink("download_macs2", "Download MACS2"),
           shiny::plotOutput("circos") %>% shinycssloaders::withSpinner(color="#0dc5c1")
         ),
         shiny::tabPanel(

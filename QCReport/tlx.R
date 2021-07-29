@@ -37,6 +37,21 @@ tlx_read_many = function(samples_df) {
   tlx_df.all
 }
 
+
+tlx_write_wig = function(tlx_df, file, extsize) {
+  tlx_coverage(tlx_df %>% dplyr::mutate(Rstart=ifelse(Strand=="-1", Junction-extsize, Junction), Rend=ifelse(Strand=="1", Junction+extsize, Junction)), group="none") %>%
+    dplyr::select(tlxcov_chrom, tlxcov_start, tlxcov_end, tlxcov_pileup) %>%
+    readr::write_tsv(file=file, col_names=F)
+}
+
+
+tlx_write_bed = function(tlx_df, file) {
+  tlx_df %>%
+    dplyr::mutate(strand=ifelse(Strand=="-1", "-", "+")) %>%
+    dplyr::select(Rname, Rstart, Rend, Qname, mapqual, strand) %>%
+    readr::write_tsv(file=file, col_names=F)
+}
+
 tlx_coverage = function(tlx_df, group=c("none", "group", "sample", "path")) {
   tlx_coverage_ = function(x) {
     x_ranges = GenomicRanges::makeGRangesFromDataFrame(x %>% dplyr::mutate(seqnames=Rname, start=Rstart, end=Rend), ignore.strand=T)
