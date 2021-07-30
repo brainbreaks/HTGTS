@@ -5,8 +5,9 @@ library(bedr)
 library(digest)
 
 log = function(..., collapse=NULL) {
-  msg = paste0(">>> ", paste0(..., collapse=collapse), "\n")
-  cat(file=stderr(), msg)
+  msg = paste0(">>> ", paste0(..., collapse=collapse))
+  message(msg)
+  # cat(file=stderr(), paste0(msg, "\n"))
 }
 
 blank_tibble = function(cols) {
@@ -130,7 +131,9 @@ macs2 = function(name, sample, control=NULL, qvalue=0.01, extsize=2000, slocal=5
 
   cmd = stringr::str_glue("macs2 callpeak {bed_sample} {bed_control} --seed 123 -f BED -g hs --keep-dup all -n {name} --outdir {output_dir} --nomodel --slocal {slocal} --extsize {extsize} -q {qvalue} --llocal {llocal} --bdg --trackline", bed_sample=bed_sample, bed_control=bed_control, name=name, output_dir=output_dir, extsize=extsize, qvalue=qvalue, llocal=sprintf("%0.0f", llocal), slocal=sprintf("%0.0f", slocal))
   log(cmd)
-  system(cmd)
+  output = system(paste(cmd, " 2>&1"), intern = T)
+  output = paste0(output, collapse="\n")
+  log(output)
 
   readr::read_tsv(paste0(output_dir, "/", name, "_peaks.xls"), comment="#", col_names=names(macs_cols$cols), col_types=macs_cols) %>%
     dplyr::slice(-1) %>%
