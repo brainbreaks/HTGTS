@@ -236,11 +236,11 @@ tlx_macs2 = function(tlx_df, qvalue=0.01, pileup=1, extsize=2000, slocal=50000, 
         dplyr::select(Rname, bed_start, bed_end, Qname, 0, bed_strand) %>%
         readr::write_tsv(file=f_control_bed, na="", col_names=F)
 
-      print("Running MACS with control")
+      log("Running MACS with control")
       macs_df = macs2(name=basename(f_input_bed), sample=f_input_bed, control=f_control_bed, extsize=extsize, qvalue=qvalue, slocal=slocal, llocal=llocal, output_dir=dirname(f_input_bed)) %>%
         dplyr::mutate(macs_group=gr)
     } else {
-      print("Running MACS without control")
+      log("Running MACS without control")
       macs_df = macs2(name=basename(f_input_bed), sample=f_input_bed, extsize=extsize, qvalue=qvalue, slocal=slocal, llocal=llocal, output_dir=dirname(f_input_bed)) %>%
         dplyr::mutate(macs_group=gr)
     }

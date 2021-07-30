@@ -18,6 +18,12 @@ download_link = function(data, file) {
   }
 }
 
+event = function(expr) {
+  withCallingHandlers(expr, message=function(m) {
+    shinyjs::html(id="logs", html=gsub("\n", "<br />", m$message), add=T)
+  })
+}
+
 server <- function(input, output, session) {
   # @todo: properly load default
   r <- shiny::reactiveValues(
@@ -32,38 +38,46 @@ server <- function(input, output, session) {
   )
 
 
-  observeEvent(input$advanced_hide, {
+  observeEvent(input$advanced_hide, event({
     log(input$advanced_hide)
     shinyjs::toggle(id="advanced_panel")
-  })
+  }))
 
-  observeEvent(r$tlx_df, {
+  observeEvent(r$tlx_df, event({
     log("r$tlx_df")
     r$baits_df = tlx_identify_baits(r$tlx_df, breaksite_size=input$breaksite_size)
     shinyjs::toggle(id="download_baits", condition=nrow(r$tlx_df)>0)
-  }, ignoreNULL=F)
+  }), ignoreNULL=F)
+
+  observeEvent(input$logs_hide, event({
+    shinyjs::toggle(id="logs")
+  }), ignoreNULL=F)
 
   output$download_baits <- downloadHandler(filename="baits.tsv",
     content = function(file) {
-      log("output$download_baits ")
-      download_link(data=r$baits_df, file=file)
+      event({
+        log("output$download_baits ")
+        download_link(data=r$baits_df, file=file)
+      })
     }
   )
 
 
   output$download_macs2 = downloadHandler(filename="macs2.tsv",
     content = function(file) {
-      log("output$download_macs2")
-      download_link(data=r$macs_df, file=file)
+      event({
+        log("output$download_macs2")
+        download_link(data=r$macs_df, file=file)
+      })
     }
   )
 
-  observeEvent(input$genome, {
+  observeEvent(input$genome, event({
     log("input$genome")
     r$repeatmasker_df = repeatmasker_read(file.path(genomes_path, input$genome, "annotation/ucsc_repeatmasker.tsv"))
-  })
+  }))
 
-  observeEvent(input$tlx_add, {
+  observeEvent(input$tlx_add, event({
     log("input$tlx_add")
 
     group_i = r$tlx_num+1
@@ -80,7 +94,7 @@ server <- function(input, output, session) {
       shiny::downloadLink(paste0("download_bed_", control_id), "bed"),
     ))
 
-    session$userData[[paste0("tlx", group_i, "_observer")]] = observeEvent(c(input[[input_id]], input[[control_id]]), {
+    session$userData[[paste0("tlx", group_i, "_observer")]] = observeEvent(c(input[[input_id]], input[[control_id]]), event({
       log(paste0("tlx", group_i, "_observer"))
 
       tlx_df = isolate(r$tlx_df %>% dplyr::filter(tlx_group!=group_id))
@@ -108,7 +122,7 @@ server <- function(input, output, session) {
         shinyjs::show(paste0("download_pileup_", field_id))
         shinyjs::show(paste0("download_bed_", field_id))
       }
-    }, ignoreInit=T)
+    }), ignoreInit=T)
 
     r$tlx_num = r$tlx_num + 1
     shinyjs::toggle("tlx_del", condition=r$tlx_num>0)
@@ -121,40 +135,47 @@ server <- function(input, output, session) {
     # @ todo: this should be possible to put into loop (be carefull about context!!!)
     output[[paste0("download_pileup_", input_id)]] = downloadHandler(filename=paste0(input_id, ".wig"),
       content=function(file) {
+        event({
           log("input$download_pileup_", input_id)
           log(group_id)
           tlx_df.f = r$tlx_df %>% dplyr::filter(!tlx_control & tlx_group==group_id)
           tlx_write_wig(tlx_df.f, file=file, extsize=input$extsize)
+        })
     })
 
     output[[paste0("download_bed_", input_id)]] = downloadHandler(filename=paste0(input_id, ".bed"),
       content=function(file) {
-        log("input$download_bed_", input_id)
-          log(group_id)
-        tlx_df.f = r$tlx_df %>% dplyr::filter(!tlx_control & tlx_group==group_id)
-        tlx_write_bed(tlx_df.f, file=file)
+        event({
+          log("input$download_bed_", input_id)
+          tlx_df.f = r$tlx_df %>% dplyr::filter(!tlx_control & tlx_group==group_id)
+          tlx_write_bed(tlx_df.f, file=file)
+        })
       })
 
     output[[paste0("download_pileup_", control_id)]] = downloadHandler(filename=paste0(control_id, ".wig"),
       content=function(file) {
+        event({
           log("input$download_pileup_", control_id)
           log(group_id)
           tlx_df.f = r$tlx_df %>% dplyr::filter(tlx_control & tlx_group==group_id)
           tlx_write_wig(tlx_df.f, file=file, extsize=input$extsize)
+        })
     })
 
     output[[paste0("download_bed_", control_id)]] = downloadHandler(filename=paste0(control_id, ".bed"),
       content=function(file) {
-        log("input$download_bed_", control_id)
-        log(group_id)
-        tlx_df.f = r$tlx_df %>% dplyr::filter(tlx_control & tlx_group==group_id)
-        tlx_write_bed(tlx_df.f, file=file)
+        event({
+          log("input$download_bed_", control_id)
+          log(group_id)
+          tlx_df.f = r$tlx_df %>% dplyr::filter(tlx_control & tlx_group==group_id)
+          tlx_write_bed(tlx_df.f, file=file)
+        })
       })
 
-  }, ignoreNULL=F)
+  }), ignoreNULL=F)
 
 
-  observeEvent(input$tlx_del, {
+  observeEvent(input$tlx_del, event({
     log("input$tlx_del")
     group_i = r$tlx_num
     input_id = paste0("tlx", r$tlx_num)
@@ -174,10 +195,10 @@ server <- function(input, output, session) {
 
     r$tlx_num = r$tlx_num - 1
     shinyjs::toggle("tlx_del", condition=r$tlx_num>0)
-  }, ignoreInit=T)
+  }), ignoreInit=T)
 
 
-  observeEvent(input$model, {
+  observeEvent(input$model, event({
     log("input$model")
     r$repeatmasker_df = repeatmasker_read(file.path(genomes_path, input$model, "annotation/ucsc_repeatmasker.tsv"), columns=c("repeatmasker_chrom", "repeatmasker_start", "repeatmasker_end", "repeatmasker_class"))
 
@@ -186,17 +207,24 @@ server <- function(input, output, session) {
     shiny::updateSelectInput(inputId="circos_chromosomes", choices=cytoband$chromosome, selected=c())
 
     log("Repeatmasker file loaded!")
+  }))
+
+
+  output$input_validation <- renderText({
+    log(input$extsize, " <= ", input$slocal)
+    shiny::validate(need(!any(r$tlx_df$tlx_control) || input$extsize <= input$slocal, 'slocal should be less or equal to extsize when calling peaks with background'))
   })
 
 
-  observeEvent(input$offtargets, {
+  observeEvent(input$offtargets, event({
     log("input$offtargets")
     log(basename(input$offtargets$name))
     r$offtargets_df = offtargets_read(input$offtargets$datapath)
-  }, ignoreInit=T)
+  }), ignoreInit=T)
 
-  observeEvent(input$calculate, {
+  observeEvent(input$calculate, event({
     log("input$calculate")
+
     req(!is.null(r$tlx_df) && nrow(r$tlx_df))
 
     exclude_repeats = shiny::isolate(input$exclude_repeats)
@@ -225,7 +253,7 @@ server <- function(input, output, session) {
     #
     # Vivien's
     #
-    # setwd("/home/s215v/Workspace/HTGTS/QCReport")
+    setwd("/home/s215v/Workspace/HTGTS/QCReport")
     # r = list(); width = 500; height=500;  pileup=5; exclude_repeats = F; exclude_bait_region = T; bait_region = 500000; extsize = 2000; qvalue = 0.001; slocal = 1000; llocal = 10000000; model = "mm10"; genomes_path = "/home/s215v/Workspace/HTGTS/genomes"
     # session = list(userData=list(
     #   repeats_summary_svg="Vivien/reports/repeats_summary.svg",
@@ -499,5 +527,5 @@ server <- function(input, output, session) {
       #   dplyr::group_by(reduced_id, tlx_group) %>%
       #   dplyr::summarize(n=n())
     }, deleteFile=F)
-  })
+  }))
 }

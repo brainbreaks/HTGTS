@@ -11,7 +11,10 @@ ui <- shiny::fluidPage(
   shiny::HTML("<style> .tlx-group .shiny-file-input-progress { margin-bottom: 1px !important; } </style>"),
   shiny::HTML("<style> .tlx-group .shiny-file-input-progress { height: 15px !important; } </style>"),
   shiny::HTML("<style> .tlx-group .shiny-input-container { margin-bottom: 1px !important; } </style>"),
+  shiny::HTML("<style> #input_validation { color: #FF0000; font-weight: bold; background:#fffebd } </style>"),
 
+
+  verbatimTextOutput("input_validation"),
 
 
   shiny::sidebarLayout(
@@ -40,8 +43,8 @@ ui <- shiny::fluidPage(
             shiny::column(10, shiny::numericInput("bait_region", label="", value=500000))
           ),
           shiny::numericInput("breaksite_size", label="breaksite size", value=19),
-          shiny::numericInput("extsize", label="extsize", value=300),
-          shiny::numericInput("slocal", label="slocal", value=50000),
+          shiny::numericInput("extsize", label="extsize", value=2000),
+          shiny::numericInput("slocal", label="slocal", value=2000),
           shiny::numericInput("llocal", label="llocal", value=10000000)
         )
       ),
@@ -76,5 +79,8 @@ ui <- shiny::fluidPage(
         )
       )
     )
-  )
+  ),
+
+  shiny::actionLink("logs_hide", "show logs"),
+  textOutput("logs")
 )
