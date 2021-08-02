@@ -31,8 +31,11 @@ ui <- shiny::fluidPage(
       shiny::selectInput("model", label="Model", selected="mm10", choices=c("mm10", "hg19")),
       shiny::numericInput("qvalue", label="MACS2 qvalue", value=0.001),
       shiny::numericInput("pileup", label="MACS2 smallest pileup to call a peak", value=5),
-      shiny::selectInput("circos_chromosomes", label="Chromosomes", choices=c(), multiple=T),
 
+      shiny::wellPanel(
+        shiny::selectInput("circos_chromosomes", label="Circos chromosomes", choices=c(), multiple=T),
+        shiny::numericInput("circos_bw", label="Circos bin width", value=1e6)
+      ),
 
       shiny::actionLink("advanced_hide", "advanced options"),
       shinyjs::hidden(

@@ -148,13 +148,26 @@ plot_venn = function(x, main, pallete="Pastel2", size=500) {
   grid::grid.draw(p)
 }
 
-plot_circos = function(data, title, cytoband_path, chromosomes, annotations=NULL, links=NULL, circos_bw=1e6-1, cex=5) {
+plot_circos = function(input, control, title, cytoband_path, chromosomes, annotations=NULL, links=NULL, circos_bw=1e6-1, cex=5, colors=c(neutral="#999999", input="#FFCB00", control="#FF5700")) {
   cytoband = circlize::read.cytoband(cytoband_path)
   cytoband_df = data.frame(cytoband$chr.len) %>% tibble::rownames_to_column("chrom") %>% dplyr::rename(chrom_length="cytoband.chr.len")
 
-  unknown_chroms = list("data (chrom1)"=unique(setdiff(data$chrom, cytoband_df$chrom)))
+  if(!is.null(control)) {
+    has_control = nrow(control)>0
+  } else {
+    has_control = F
+  }
+
+  unknown_chroms = list("data (chrom1)"=unique(setdiff(unique(c(input$chrom, control$chrom)), cytoband_df$chrom)))
+
   if(!is.null(annotations)) {
-    unknown_chroms[["hits (chrom)"]] = unique(setdiff(hits$chrom, cytoband_df$chrom))
+    if(is.data.frame(annotations)) {
+      annotations = list("annotations"=annotations)
+    }
+
+    for(n in names(annotations)) {
+      unknown_chroms[[paste0("annotations (", n, ")")]] = unique(setdiff(annotations[[n]]$chrom, cytoband_df$chrom))
+    }
   }
   if(!is.null(links)) {
     unknown_chroms[["links (chrom1)"]] = unique(setdiff(links$chrom1, cytoband_df$chrom))
@@ -167,9 +180,16 @@ plot_circos = function(data, title, cytoband_path, chromosomes, annotations=NULL
     stop(unknown_chroms_err)
   }
 
-  # @todo: calculate pileup here
-  data_sum = data %>%
-    dplyr::group_by(chrom) %>%
+  if(has_control) {
+    scale = c(input=1, control=nrow(input)/nrow(control))
+    data_sum = rbind(input %>% dplyr::mutate(circos_signal="input"), control %>% dplyr::mutate(circos_signal="control"))
+  } else {
+    scale = c(input=1)
+    data_sum = input %>% dplyr::mutate(circos_signal="input")
+  }
+  data_sum = data_sum %>%
+    dplyr::inner_join(cytoband_df, by="chrom") %>%
+    dplyr::group_by(circos_signal, chrom_length, chrom) %>%
     dplyr::do((function(d){
       # x_ranges = GenomicRanges::makeGRangesFromDataFrame(d, ignore.strand=T)
       # cov_ranges = as(GenomicRanges::coverage(x_ranges), "GRanges")
@@ -177,25 +197,33 @@ plot_circos = function(data, title, cytoband_path, chromosomes, annotations=NULL
       #   dplyr::mutate(count=score, count_log10=ifelse(count>0, log10(count), 0)) %>%
       #   dplyr::select(start, end, count=score, count_log10)
 
-      h = hist(d$start, plot=F, breaks=c(seq(1, max(d$start), by=circos_bw), max(d$start)))
-      data.frame(start=h$breaks[-length(h$breaks)], end=h$breaks[-1]-1, count=h$count, count_log10=ifelse(h$count>0, log10(h$count), 0))
+      h = hist(d$start, plot=F, breaks=c(seq(1, d$chrom_length[1], by=circos_bw), d$chrom_length[1]))
+      data.frame(start=h$breaks[-length(h$breaks)], end=h$breaks[-1]-1, count=scale[d$circos_signal[1]]*h$count, count_log10=ifelse(h$count>0, log10(h$count), 0))
     })(.)) %>%
-    dplyr::inner_join(cytoband_df, by="chrom") %>%
     dplyr::mutate(start=pmax(1, start), end=pmin(end, chrom_length-1)) %>%
-    data.frame()
+    dplyr::mutate(circos_col=paste0("count_log10.", circos_signal)) %>%
+    dplyr::filter(end<=chrom_length) %>%
+    reshape2::dcast(chrom + start + end + chrom_length ~ circos_col, value.var="count_log10")
 
-  circos_ylim = c(0, max(data_sum$count_log10))
+  if(has_control) {
+    circos_ymax = max(c(data_sum$count_log10.input, data_sum$count_log10.control))
+  } else {
+    data_sum$count_log10.input
+  }
+
+  circos_ylim = c(0, circos_ymax)
   circos_ylabels = sort(expand.grid(power=10**seq(0, ceiling(circos_ylim[2]), 1), prec=c(1, 2, 5)) %>% dplyr::mutate(y=power*prec) %>% .$y)
-  circos_ylabels = circos_ylabels[circos_ylabels<=10**max(data_sum$count_log10)]
+  circos_ylabels = circos_ylabels[circos_ylabels<=10**circos_ymax]
   circos_yaxis = log10(circos_ylabels)
   circos_yaxis_pal = circlize::colorRamp2(circos_yaxis, colorRampPalette(rev(RColorBrewer::brewer.pal(5, "Blues")))(length(circos_yaxis)), transparency=0.8)
 
-  # , plotType=c("axis", "labels")
-  circos.par("gap.degree" = c(rep(1, length(chromosomes)-1), 5))
+  circos.par("gap.degree"=c(rep(1, length(chromosomes)-1), 5))
   par(cex=cex, cex.main=cex)
   circlize::circos.initializeWithIdeogram(cytoband=cytoband_path, chromosome.index=chromosomes, plotType=c("axis", "labels"))
   circlize::circos.genomicTrack(data_sum, bg.border=NA, ylim=circos_ylim,
       panel.fun = function(region, value, ...) {
+        rr<<-region
+        vv<<-value
         if(circlize::get.current.chromosome() == cytoband$chromosome[1]) {
           circlize::circos.yaxis(at=circos_yaxis[circos_ylabels>=2], labels=circos_ylabels[circos_ylabels>=2], labels.cex=cex*0.4)
         }
@@ -204,33 +232,52 @@ plot_circos = function(data, title, cytoband_path, chromosomes, annotations=NULL
             circlize::circos.rect(xleft=0, xright=cytoband$chr.len[circlize::get.current.chromosome()], ybottom=circos_yaxis[ax-1], ytop=circos_yaxis[ax], col=circos_yaxis_pal(circos_yaxis[ax-1]), border="#00000000")
           }
         }
-        circlize::circos.rect(xleft=region$start, xright=region$end, ybottom=0, ytop=value$count_log10, col="#333333", border="#333333")
+
+        if(has_control) {
+          count_log10.pmin = pmin(value$count_log10.input, value$count_log10.control)
+          circlize::circos.rect(xleft=region$start, xright=region$end+1, ybottom=0, ytop=count_log10.pmin, col=colors["neutral"], border=colors["neutral"])
+
+          f = value$count_log10.input>count_log10.pmin
+          if(any(f)) circlize::circos.rect(xleft=region$start[f], xright=region$end[f]+1, ybottom=count_log10.pmin[f], ytop=value$count_log10.input[f], col=colors["input"], border=colors["input"])
+
+          f = value$count_log10.control>count_log10.pmin
+          if(any(f)) circlize::circos.rect(xleft=region$start[f], xright=region$end[f]+1, ybottom=count_log10.pmin[f], ytop=value$count_log10.control[f], col=colors["control"], border=colors["control"])
+        } else {
+          circlize::circos.rect(xleft=region$start, xright=region$end+1, ybottom=0, ytop=value$count_log10.input, col="#999999", border="#999999")
+        }
   })
-  if(!is.null(annotations)) {
-    if(is.data.frame(annotations)) {
-      annotations = list("annotations"=annotations)
-    }
-    circlize::circos.genomicTrack(annotations, bg.border=NA, ylim=c(0,1), track.height=0.01, cell.padding=c(0,0),
+
+  if(!is.null(annotations) && length(annotations)>0) {
+    circlize::circos.genomicTrack(annotations, bg.border=NA, ylim=c(0,1), track.height=0.04, cell.padding=c(0,0),
         panel.fun = function(region, value, ...) {
-          circlize::circos.rect(xleft=region$start, xright=region$end, ybottom=0, ytop=1, col="#FF3333", border="#FF3333")
+          circlize::circos.rect(xleft=region$start, xright=region$end, ybottom=0, ytop=1, col="#330000", border="#330000")
     })
   }
 
   if(!is.null(links)) {
-    links_bw = 2e6
     if(!("color" %in% colnames(links))) {
       links$color = "#F46D4380"
     }
+
+
     links_sum = links %>%
       dplyr::filter(chrom1 %in% chromosomes & chrom2 %in% chromosomes) %>%
-      dplyr::mutate(oldstart1=start1, oldend1=end1, oldstart2=start2, oldend2=end2) %>%
-      dplyr::mutate(start1=floor(start1/links_bw)*links_bw, end1=start1+links_bw-1) %>%
-      dplyr::mutate(start2=floor(start2/links_bw)*links_bw, end2=start2+links_bw-1) %>%
-      dplyr::distinct(chrom1, start1, end1, chrom2, start2, end2, color, .keep_all=T) %>%
-      dplyr::inner_join(cytoband_df %>% setNames(., paste0(colnames(.), "1")), by="chrom1") %>%
-      dplyr::inner_join(cytoband_df %>% setNames(., paste0(colnames(.), "2")), by="chrom2") %>%
-      dplyr::mutate(start1=pmax(1, start1), end1=pmin(end1, chrom_length1)) %>%
-      dplyr::mutate(start2=pmax(1, start2), end2=pmin(end2, chrom_length2))
+      dplyr::inner_join(cytoband_df %>% setNames(., paste0(colnames(.), "1")), by="chrom1")  %>%
+      dplyr::inner_join(cytoband_df %>% setNames(., paste0(colnames(.), "2")), by="chrom2")  %>%
+      dplyr::rowwise() %>%
+      dplyr::do((function(d){
+        dd<<-d
+        breaks = seq(1, d$chrom_length1[1], by=circos_bw)
+        data.frame(
+          chrom1=d$chrom1,
+          start1=breaks[which(breaks>d$start1)[1]-1],
+          end1=breaks[rev(which(breaks<d$end1))[1]+1],
+          chrom2=d$chrom2,
+          start2=breaks[which(breaks>d$start2)[1]-1],
+          end2=breaks[rev(which(breaks<d$end2))[1]+1],
+          color=d$color
+        )
+      })(.))
 
     if(nrow(links_sum) > 0) {
       circlize::circos.genomicLink(
@@ -240,6 +287,7 @@ plot_circos = function(data, title, cytoband_path, chromosomes, annotations=NULL
     }
   }
   title(title)
+  legend("bottomleft", title="Reads", legend=names(colors), fill=colors, xjust=1, yjust=1)
 
   circlize::circos.clear()
 }

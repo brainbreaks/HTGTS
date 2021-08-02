@@ -235,6 +235,7 @@ server <- function(input, output, session) {
     slocal = shiny::isolate(input$slocal)
     llocal = shiny::isolate(input$llocal)
     model = shiny::isolate(input$model)
+    circos_bw = shiny::isolate(input$circos_bw)
 
     genome_path = file.path(genomes_path, model, paste0(model, ".fa"))
     cytoband_path = file.path(genomes_path, model, "annotation/cytoBand.txt")
@@ -253,8 +254,8 @@ server <- function(input, output, session) {
     #
     # Vivien's
     #
-    setwd("/home/s215v/Workspace/HTGTS/QCReport")
-    # r = list(); width = 500; height=500;  pileup=5; exclude_repeats = F; exclude_bait_region = T; bait_region = 500000; extsize = 2000; qvalue = 0.001; slocal = 1000; llocal = 10000000; model = "mm10"; genomes_path = "/home/s215v/Workspace/HTGTS/genomes"
+    # setwd("/home/s215v/Workspace/HTGTS/QCReport")
+    # r = list(); width = 500; height=500; circos_bw=50000; circos_chromosomes="chr6"; pileup=5; exclude_repeats = F; exclude_bait_region = T; bait_region = 500000; extsize = 2000; qvalue = 0.001; slocal = 2000; llocal = 10000000; model = "mm10"; genomes_path = "/home/s215v/Workspace/HTGTS/genomes"
     # session = list(userData=list(
     #   repeats_summary_svg="Vivien/reports/repeats_summary.svg",
     #   junctions_venn_svg = "Vivien/reports/junctions_venn.svg",
@@ -267,13 +268,16 @@ server <- function(input, output, session) {
     #
     # cytoband_path = file.path(genomes_path, model, "annotation/cytoBand.txt")
     # cytoband = circlize::read.cytoband(cytoband_path)
-    # circos_chromosomes = cytoband$chromosome
+    # #circos_chromosomes = cytoband$chromosome
     #
     # samples_df = rbind(readr::read_tsv("Vivien/B400_011_metadata_2.txt"), readr::read_tsv("Vivien/B400_012_metadata_complete.txt")) %>%
-    #   dplyr::filter(grepl("49|51|56|58", Library)) %>%
-    #   dplyr::mutate(path=str_glue("Vivien/{lib}_{seq}_result.tlx", lib=Library, seq=Sequencing), sample=paste0(Library, ifelse(grepl("promoter", Description), "-prom", "+prom")), group=gsub(".*(One.*)", "\\1", Description), control=!grepl("promoter", Description)) %>%
-    #   dplyr::mutate(control=F) %>%
-    #   dplyr::select(path, sample, group, control)
+    #   dplyr::filter(grepl("55|56|57|58", Library)) %>%
+    #   dplyr::mutate(path=str_glue("Vivien/{lib}_{seq}_result.tlx", lib=Library, seq=Sequencing),
+    #                 group=gsub("^[^0-9]+[0-9/]+ ?", "", gsub(".*(One.*)", "\\1", gsub(" - (DMSO|APH)", "", Description)), perl=T),
+    #                 sample=paste0(Library, ifelse(grepl("promoter", Description), "-prom", "+prom")),
+    #                 control=!grepl("APH", Description, perl=T)) %>%
+    #   dplyr::select(path, sample, group, control, Description) %>%
+    #   data.frame()
     # # r$offtargets_df = offtargets_read("Vivien/offtargets.bed")
     # tlx_df = tlx_read_many(samples_df)
     # tlx_df = tlx_remove_rand_chromosomes(tlx_df)
@@ -457,7 +461,7 @@ server <- function(input, output, session) {
 
       log("Finished")
 
-      list(src=normalizePath(session$userData$homology_svg), contentType='image/svg+xml', width=width, height=height, alt="TLX circos plot")
+      list(src=normalizePath(session$userData$homology_svg), contentType='image/svg+xml', width=width, height=height, alt="homology plot")
     }, deleteFile=F)
 
     #
@@ -466,7 +470,6 @@ server <- function(input, output, session) {
     output$circos = renderImage({
       width = session$clientData$output_circos_width
       height = (width + 100) * groups_n
-      log(groups_n)
 
       session$userData$circos_svg = tempfile(fileext=".svg")
       log("Plot circos ", session$userData$circos_svg, " (w=", width, " h=", height, ")")
@@ -477,6 +480,7 @@ server <- function(input, output, session) {
         tlx_df.gr = tlx_df %>% dplyr::filter(tlx_group==gr)
         macs_df.gr = r$macs_df %>% dplyr::filter(macs_group==gr)
         baits_df.gr = baits_df %>% dplyr::distinct(bait_group, .keep_all=T)
+        hits_df.gr = macs_df.gr %>% dplyr::select(chrom=macs_chrom, start=macs_start, end=macs_end)
 
         links_df.gr = macs_df.gr %>% dplyr::inner_join(baits_df.gr, by=c("macs_group"="bait_group"))
         if("macs_is_offtarget" %in% colnames(links_df.gr)) {
@@ -488,13 +492,15 @@ server <- function(input, output, session) {
           dplyr::select(chrom1=macs_chrom, start1=macs_start, end1=macs_end, chrom2=bait_chrom, start2=bait_start, end2=bait_end, color)
 
         plot_circos(
-          data=tlx_df.gr %>% dplyr::select(chrom=Rname, start=Rstart, end=Rend),
+          input=tlx_df.gr %>% dplyr::filter(!tlx_control) %>% dplyr::select(chrom=Rname, start=Rstart, end=Rend),
+          control=tlx_df.gr %>% dplyr::filter(tlx_control) %>% dplyr::select(chrom=Rname, start=Rstart, end=Rend),
           title=gr,
+          annotations=list("hits"=hits_df.gr),
           cytoband_path=cytoband_path,
           chromosomes=circos_chromosomes,
           links=links_df.gr,
+          circos_bw=circos_bw,
           cex=width/300)
-        # popViewport()
       }
       dev.off()
 
@@ -519,13 +525,6 @@ server <- function(input, output, session) {
       print(plot_macs2_pileups(tlx_df, r$macs_df))
       dev.off()
       list(src=normalizePath(session$userData$compare_pileup_svg), contentType='image/svg+xml', width=width, height=height, alt="Compare pileups for MACS2 hits")
-      #
-      # reduced2tlx_df %>%
-      #   dplyr::filter(compare_pvalue<=0.05)
-      #
-      # macs2tlx_df %>%
-      #   dplyr::group_by(reduced_id, tlx_group) %>%
-      #   dplyr::summarize(n=n())
     }, deleteFile=F)
   }))
 }
