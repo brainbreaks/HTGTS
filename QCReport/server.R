@@ -87,10 +87,10 @@ server <- function(input, output, session) {
 
     shiny::insertUI("#tlx_files", where="beforeEnd", immediate=T, ui=shiny::div(class="tlx-group",
       fileInput(input_id, label="Input", placeholder="No file selected", multiple=T),
-      shiny::downloadLink(paste0("download_pileup_", input_id), "wig"),
+      shiny::downloadLink(paste0("download_pileup_", input_id), "pileup"),
       shiny::downloadLink(paste0("download_bed_", input_id), "bed"),
       fileInput(control_id, label="Control", placeholder="No file selected", multiple=T),
-      shiny::downloadLink(paste0("download_pileup_", control_id), "wig"),
+      shiny::downloadLink(paste0("download_pileup_", control_id), "pileup"),
       shiny::downloadLink(paste0("download_bed_", control_id), "bed"),
     ))
 
@@ -256,6 +256,7 @@ server <- function(input, output, session) {
     #
     # setwd("/home/s215v/Workspace/HTGTS/QCReport")
     # r = list(); width = 500; height=500; circos_bw=50000; circos_chromosomes="chr6"; pileup=5; exclude_repeats = F; exclude_bait_region = T; bait_region = 500000; extsize = 2000; qvalue = 0.001; slocal = 2000; llocal = 10000000; model = "mm10"; genomes_path = "/home/s215v/Workspace/HTGTS/genomes"
+    # r = list(); width = 500; height=500; circos_bw=50000; circos_chromosomes="chr6"; pileup=5; exclude_repeats = F; exclude_bait_region = T; bait_region = 500000; extsize = 10000; qvalue = 0.01; slocal = 50000; llocal = 10000000; model = "mm10"; genomes_path = "/home/s215v/Workspace/HTGTS/genomes"
     # session = list(userData=list(
     #   repeats_summary_svg="Vivien/reports/repeats_summary.svg",
     #   junctions_venn_svg = "Vivien/reports/junctions_venn.svg",
@@ -376,7 +377,7 @@ server <- function(input, output, session) {
         dplyr::mutate(Subset=dplyr::case_when(
           tlx_is_bait_junction~"bait peak",
           tlx_is_offtarget~"offtarget peak",
-          !is.na(tlx_repeatmasker_class)~"o/w repeat",
+          !is.na(tlx_repeatmasker_class)~"overlapping repeats",
           T~"other junctions")) %>%
         dplyr::group_by(tlx_group, tlx_sample) %>%
         dplyr::mutate(total_n=n()) %>%

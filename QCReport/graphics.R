@@ -235,15 +235,15 @@ plot_circos = function(input, control, title, cytoband_path, chromosomes, annota
 
         if(has_control) {
           count_log10.pmin = pmin(value$count_log10.input, value$count_log10.control)
-          circlize::circos.rect(xleft=region$start, xright=region$end+1, ybottom=0, ytop=count_log10.pmin, col=colors["neutral"], border=colors["neutral"])
+          circlize::circos.rect(xleft=region$start, xright=region$end+1, ybottom=0, ytop=count_log10.pmin, col=colors["neutral"], border=NA)
 
           f = value$count_log10.input>count_log10.pmin
-          if(any(f)) circlize::circos.rect(xleft=region$start[f], xright=region$end[f]+1, ybottom=count_log10.pmin[f], ytop=value$count_log10.input[f], col=colors["input"], border=colors["input"])
+          if(any(f)) circlize::circos.rect(xleft=region$start[f], xright=region$end[f]+1, ybottom=count_log10.pmin[f], ytop=value$count_log10.input[f], col=colors["input"], border=NA)
 
           f = value$count_log10.control>count_log10.pmin
-          if(any(f)) circlize::circos.rect(xleft=region$start[f], xright=region$end[f]+1, ybottom=count_log10.pmin[f], ytop=value$count_log10.control[f], col=colors["control"], border=colors["control"])
+          if(any(f)) circlize::circos.rect(xleft=region$start[f], xright=region$end[f]+1, ybottom=count_log10.pmin[f], ytop=value$count_log10.control[f], col=colors["control"], border=NA)
         } else {
-          circlize::circos.rect(xleft=region$start, xright=region$end+1, ybottom=0, ytop=value$count_log10.input, col="#999999", border="#999999")
+          circlize::circos.rect(xleft=region$start, xright=region$end+1, ybottom=0, ytop=value$count_log10.input, col="#999999", border=NA)
         }
   })
 

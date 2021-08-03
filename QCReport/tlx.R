@@ -39,7 +39,9 @@ tlx_read_many = function(samples_df) {
 
 
 tlx_write_wig = function(tlx_df, file, extsize) {
-  tlx_coverage(tlx_df %>% dplyr::mutate(Rstart=ifelse(Strand=="-1", Junction-extsize, Junction), Rend=ifelse(Strand=="1", Junction+extsize, Junction)), group="none") %>%
+  tld_df_mod = tlx_df %>%
+    dplyr::mutate(Rstart=ifelse(Strand=="-1", Junction-extsize, Junction), Rend=ifelse(Strand=="1", Junction+extsize, Junction))
+  tlx_coverage(tld_df_mod, group="none") %>%
     dplyr::select(tlxcov_chrom, tlxcov_start, tlxcov_end, tlxcov_pileup) %>%
     readr::write_tsv(file=file, col_names=F)
 }
@@ -47,8 +49,8 @@ tlx_write_wig = function(tlx_df, file, extsize) {
 
 tlx_write_bed = function(tlx_df, file) {
   tlx_df %>%
-    dplyr::mutate(strand=ifelse(Strand=="-1", "-", "+")) %>%
-    dplyr::select(Rname, Rstart, Rend, Qname, mapqual, strand) %>%
+    dplyr::mutate(strand=ifelse(Strand=="-1", "-", "+"), start=ifelse(Strand=="-1", Junction-1, Junction), end=ifelse(Strand=="-1", Junction, Junction+1)) %>%
+    dplyr::select(Rname, start, end, Qname, mapqual, strand) %>%
     readr::write_tsv(file=file, col_names=F)
 }
 
@@ -189,7 +191,7 @@ tlx_mark_repeats = function(tlx_df, repeatmasker_df) {
     data.frame()
 }
 
-tlx_macs2 = function(tlx_df, qvalue=0.01, pileup=1, extsize=2000, slocal=50000, llocal=10000000, exclude_bait_region=F, exclude_repeats=F, exclude_offtargets=F, exttype=c("along", "symmetrical")) {
+tlx_macs2 = function(tlx_df, qvalue=0.01, pileup=1, extsize=2000, slocal=50000, llocal=10000000, exclude_bait_region=F, exclude_repeats=F, exclude_offtargets=F, exttype=c("along", "symmetrical", "none")) {
   if(exclude_bait_region && !("tlx_is_bait_junction" %in% colnames(tlx_df))) {
     stop("tlx_is_bait_junction is not found in tlx data frame")
   }
@@ -209,14 +211,18 @@ tlx_macs2 = function(tlx_df, qvalue=0.01, pileup=1, extsize=2000, slocal=50000, 
 
   tlx_df = tlx_df %>%
     dplyr::filter(!exclude_bait_region | !tlx_is_bait_junction) %>%
-    dplyr::mutate(bed_strand=ifelse(Strand=="1", "-", "+"), bed_start=Junction, bed_end=Junction+1)
+    dplyr::mutate(bed_strand=ifelse(Strand=="1", "-", "+"))
 
   # @TODO: I think macs does this internally
-  # if(exttype=="along") {
-  #     tlx_df = tlx_df %>% dplyr::mutate(bed_start=ifelse(Strand=="-1", Junction-junsize, Junction-1), bed_end=ifelse(Strand=="-1", Junction, Junction+junsize-1))
-  # } else {
-  #     tlx_df = tlx_df %>% dplyr::mutate(bed_start=Junction-ceiling(junsize/2), bed_end=Junction+ceiling(junsize/2))
-  # }
+  if(exttype=="along") {
+    tlx_df = tlx_df %>% dplyr::mutate(bed_start=ifelse(Strand=="-1", Junction-extsize, Junction-1), bed_end=ifelse(Strand=="-1", Junction, Junction+extsize-1))
+  } else {
+    if(exttype=="symmetrical") {
+      tlx_df = tlx_df %>% dplyr::mutate(bed_start=Junction-ceiling(extsize/2), bed_end=Junction+ceiling(extsize/2))
+    } else {
+      tlx_df = tlx_df %>% dplyr::mutate(bed_start=Junction, bed_end=Junction+1)
+    }
+  }
 
   macs_df.all = data.frame()
   for(gr in unique(tlx_df$tlx_group)) {
@@ -224,6 +230,8 @@ tlx_macs2 = function(tlx_df, qvalue=0.01, pileup=1, extsize=2000, slocal=50000, 
 
     f_input_bed = tempfile()
     f_control_bed = tempfile()
+    f_input_bed = "tmp/input.bed"
+    f_control_bed = "tmp/control.bed"
 
     tlx_df.gr %>%
       dplyr::filter(!tlx_control) %>%
