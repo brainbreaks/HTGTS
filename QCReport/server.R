@@ -236,7 +236,7 @@ server <- function(input, output, session) {
     llocal = shiny::isolate(input$llocal)
     model = shiny::isolate(input$model)
     circos_bw = shiny::isolate(input$circos_bw)
-    effective_size = c("hg19"=2.7e9, "mm9"=1.87e9, "mm10"=1.87e9)[shiny::isolate(input$genome)]
+    effective_size = c("hg19"=2.7e9, "mm9"=1.87e9, "mm10"=1.87e9)[shiny::isolate(input$model)]
     exttype = shiny::isolate(input$exttype)
     maxgap = shiny::isolate(input$maxgap)
 
@@ -250,6 +250,7 @@ server <- function(input, output, session) {
     }
 
     log_input(input)
+    log("effective_size=", effective_size)
 
     tlx_df = tlx_mark_repeats(shiny::isolate(r$tlx_df), r$repeatmasker_df)
     baits_df = shiny::isolate(r$baits_df)
@@ -265,7 +266,8 @@ server <- function(input, output, session) {
     #   homology_svg = "Vivien/reports/homology_profile.svg",
     #   circos_svg = "Vivien/reports/circos.svg",
     #   junctions_count_svg="Vivien/reports/junctions_count.svg",
-    #   compare_pileup_svg="Vivien/reports/compare_pileup.svg"
+    #   compare_pileup_svg="Vivien/reports/compare_pileup.svg",
+    #   compare_breaks_svg="Vivien/reports/compare_breaks.svg"
     # ))
     # r$repeatmasker_df = repeatmasker_read("genomes/mm10/annotation/ucsc_repeatmasker.tsv", columns=c("repeatmasker_chrom", "repeatmasker_start", "repeatmasker_end", "repeatmasker_class"))
     #
@@ -514,6 +516,49 @@ server <- function(input, output, session) {
       list(src=normalizePath(session$userData$circos_svg), contentType='image/svg+xml', width=width, height=height, alt="TLX circos plot")
     }, deleteFile=F)
 
+
+
+    #
+    # Compare MACS hits across groups
+    #
+    output$compare_breaks = renderImage({
+      log("output$compare_breaks")
+
+      width = session$clientData$output_compare_breaks_width
+      height = 960
+
+      session$userData$compare_breaks_svg = tempfile(fileext=".svg")
+      log(paste0("Plot compare plot ", session$userData$compare_breaks_svg, " (w=", width, " h=", height, ")"))
+      svg(session$userData$compare_breaks_svg, width=width/72, height=height/72, pointsize=1)
+      macs_ranges = GenomicRanges::makeGRangesFromDataFrame(r$macs_df %>% dplyr::select(seqnames=macs_chrom, start=macs_start, end=macs_end))
+
+      compare_df = tlx_test_hits(tlx_df, macs_ranges) %>%
+        dplyr::mutate(compare_coord=paste0(compare_start, "-", compare_end))
+      compare_long_df = rbind(
+        compare_df %>% dplyr::mutate(compare_group=compare_group1, compare_total_n=compare_total_n1, compare_n=compare_n1),
+        compare_df %>% dplyr::mutate(compare_group=compare_group2, compare_total_n=compare_total_n2, compare_n=compare_n2)
+      ) %>% dplyr::mutate(compare_frac=compare_n/compare_total_n) %>%
+        dplyr::arrange(dplyr::desc(compare_start)) %>%
+        dplyr::mutate(compare_coord=factor(compare_coord, unique(compare_coord)))
+      compare_long_df.sum = compare_long_df %>%
+        dplyr::mutate(compare_pvalue_str=ifelse(compare_pvalue<1e-3, formatC(compare_pvalue, format="e", digits=2), sprintf("%0.3f", compare_pvalue))) %>%
+        dplyr::group_by(compare_group1, compare_group2, compare_chrom, compare_coord, compare_pvalue, compare_pvalue_str) %>%
+        dplyr::summarize(compare_frac_max=max(compare_frac))
+
+      p = ggplot(compare_long_df) +
+        geom_bar(aes(x=compare_coord, y=compare_frac, fill=compare_group), stat="identity", position="dodge") +
+        geom_segment(aes(y=compare_frac_max + 0.02*max(compare_frac_max), yend=compare_frac_max + 0.02*max(compare_frac_max), x=as.numeric(compare_coord)-0.3, xend=as.numeric(compare_coord)+0.3), data=compare_long_df.sum) +
+        geom_text(aes(y=compare_frac_max + 0.04*max(compare_frac_max), x=as.numeric(compare_coord), label=compare_pvalue_str), data=compare_long_df.sum, hjust=0) +
+        facet_grid(compare_chrom~compare_group1+compare_group2) +
+        theme_brain() +
+        theme(legend.key.size = unit(20, 'pt')) +
+        labs(x="", y="", fill="Group") +
+        coord_flip(ylim=c(0, 1.2*max(compare_long_df$compare_frac)))
+      print(p)
+
+      dev.off()
+      list(src=normalizePath(session$userData$compare_breaks_svg), contentType='image/svg+xml', width=width, height=height, alt="Compare pileups for MACS2 hits")
+    }, deleteFile=F)
 
     #
     # Compare MACS hits across groups

@@ -109,24 +109,38 @@ tlx_identify_baits = function(tlx_df, breaksite_size=19) {
 
 
 tlx_test_hits = function(tlx_df, hits_ranges) {
-  hits_df = as.data.frame(hits_rages) %>% dplyr::mutate(compare_chrom=seqnames, compare_start=start, compare_end=end)
+  hits_df = as.data.frame(hits_ranges) %>% dplyr::mutate(compare_chrom=seqnames, compare_start=start, compare_end=end)
   hits_ranges = GenomicRanges::makeGRangesFromDataFrame(hits_df, keep.extra.columns=T)
   tlx_ranges  = GenomicRanges::makeGRangesFromDataFrame(tlx_df %>% dplyr::mutate(seqnames=Rname, start=Rstart, end=Rend), ignore.strand=T, keep.extra.columns=T)
   tlxsum_df = tlx_df %>%
-    dplyr::group_by(tlx_group, .drop=F) %>%
+    dplyr::group_by(tlx_group, tlx_sample, .drop=F) %>%
     dplyr::summarize(total_n=sum(!tlx_is_bait_junction)) %>%
-    dplyr::ungroup() %>%
-    dplyr::mutate(correction=min(total_n)/total_n)
+    dplyr::ungroup()
 
   as.data.frame(IRanges::mergeByOverlaps(hits_ranges, tlx_ranges)) %>%
-    dplyr::inner_join(tlxsum_df, by="tlx_group") %>%
-    dplyr::group_by(compare_chrom, compare_start, compare_end, tlx_group, total_n, .drop=F) %>%
+    dplyr::inner_join(tlxsum_df, by=c("tlx_group", "tlx_sample")) %>%
+    dplyr::group_by(compare_chrom, compare_start, compare_end, tlx_group, tlx_sample, total_n, .drop=F) %>%
     dplyr::summarize(n=n(), total_n=tidyr::replace_na(total_n[1], 0)) %>%
     dplyr::group_by(compare_chrom, compare_start, compare_end) %>%
     dplyr::do((function(z){
       zz<<-z
-      do.call(rbind, apply(combn(1:nrow(z), 2), 2, function(cgr) {
+      do.call(rbind, apply(combn(unique(z$tlx_group), 2), 2, function(cgr) {
         zz.cgr<<-cgr
+
+        paired=F
+        if(paired) {
+          z.gr = expand.grid(gr1=which(z$tlx_group==cgr[1]), gr2=which(z$tlx_group==cgr[2]))
+        } else {
+          z.gr = data.frame(gr1=which(z$tlx_group==cgr[1]), gr2=which(z$tlx_group==cgr[2]))
+        }
+        tables.gr = lapply(1:nrow(z.gr), function(g) z[as.numeric(z.gr[g, c("gr1", "gr2")]), c("n", "total_n")] )
+        tables.gr = abind::abind(tables.gr, along=3)
+
+        apply(tables.gr, 3, odds.ratio)
+        i.test = mantelhaen.test(tables.gr)
+        i.test$p.value
+
+
         i.contignency = as.data.frame(z[cgr, c("n", "total_n")])
         i.test = fisher.test(i.contignency)
         i.meta = z[cgr,] %>%
@@ -138,7 +152,7 @@ tlx_test_hits = function(tlx_df, hits_ranges) {
           t() %>%
           data.frame()
 
-        cbind(compare_group1=z$tlx_group[cgr[1]], compare_group2=z$tlx_group[cgr[2]], compare_pvalue=i.test$p.value, compare_odds=i.test$estimate, i.meta)
+        cbind(compare_group1=z$tlx_group[cgr[1]], compare_group2=z$tlx_group[cgr[2]], compare_pvalue=i.test$p.value, compare_odds=i.test$estimate, compare_fold=z$n[cgr[1]] / z$n[cgr[2]], i.meta)
       }))
     })(.)) %>%
     data.frame()

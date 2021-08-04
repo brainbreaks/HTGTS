@@ -80,6 +80,7 @@ ui <- shiny::fluidPage(
         ),
         shiny::tabPanel(
           "Compare hits",
+          shiny::plotOutput("compare_breaks") %>% shinycssloaders::withSpinner(color="#0dc5c1"),
           shiny::plotOutput("compare_pileup") %>% shinycssloaders::withSpinner(color="#0dc5c1")
         )
       )

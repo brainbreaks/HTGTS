@@ -249,7 +249,7 @@ plot_circos = function(input, control, title, cytoband_path, chromosomes, bait_r
           colors_input = sapply(bait_breaks, function(z) { ifelse(z, colors_darker["input"], colors["input"]) })
           colors_control = sapply(bait_breaks, function(z) { ifelse(z, colors_darker["control"], colors["control"]) })
         } else {
-          colors_neutral = olors["neutral"]
+          colors_neutral = colors["neutral"]
           colors_input = colors["input"]
           colors_control = colors["control"]
         }
