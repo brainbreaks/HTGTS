@@ -31,6 +31,8 @@ ui <- shiny::fluidPage(
       shiny::selectInput("model", label="Model", selected="mm10", choices=c("mm10", "hg19")),
       shiny::numericInput("qvalue", label="MACS2 qvalue", value=0.001),
       shiny::numericInput("pileup", label="MACS2 smallest pileup to call a peak", value=5),
+      shiny::numericInput("extsize", label="extsize", value=2000),
+      shiny::numericInput("maxgap", label="maxgap", value=0),
 
       shiny::wellPanel(
         shiny::selectInput("circos_chromosomes", label="Circos chromosomes", choices=c(), multiple=T),
@@ -41,12 +43,12 @@ ui <- shiny::fluidPage(
       shinyjs::hidden(
         shiny::wellPanel(id="advanced_panel",
           shiny::checkboxInput("exclude_repeats", label="Exclude repeats", value=F),
+          shiny::selectInput("exttype", label="exttype", selected="along", choices=c("along", "symmetrical", "none")),
           shiny::fluidRow(
             shiny::column(2, shiny::checkboxInput("exclude_bait_region", label="Exclude bait region", value=T)),
-            shiny::column(10, shiny::numericInput("bait_region", label="", value=500000))
+            shiny::column(10, shiny::numericInput("bait_region", label="", value=1500000))
           ),
           shiny::numericInput("breaksite_size", label="breaksite size", value=19),
-          shiny::numericInput("extsize", label="extsize", value=2000),
           shiny::numericInput("slocal", label="slocal", value=2000),
           shiny::numericInput("llocal", label="llocal", value=10000000)
         )

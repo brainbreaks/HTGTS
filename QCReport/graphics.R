@@ -1,6 +1,7 @@
 library(circlize)
 library(dplyr)
 library(RColorBrewer)
+library(colorspace)
 
 scale_breaks = function(x) {
     breaks = seq(0, max(x), 1e8)
@@ -32,6 +33,15 @@ plot_barcodes = function(tlx_df) {
     dplyr::select(tlx_sample, barcode_seq) %>%
     split(x=as.character(.$barcode_seq), f=.$tlx_sample) %>%
     ggseqlogo()
+}
+
+darker_colors = function(colors, l=0.3) {
+  cols1 = readhex(file=textConnection(paste(colors, collapse = "\n")), class="RGB")
+  cols1 = as(cols1, "HLS")
+  cols1@coords[, "L"] = pmax(0, cols1@coords[, "L"] - l)
+  cols1 = hex(as(cols1, "RGB"))
+  names(cols1) = names(colors)
+  cols1
 }
 
 theme_brain = function() {
@@ -148,7 +158,7 @@ plot_venn = function(x, main, pallete="Pastel2", size=500) {
   grid::grid.draw(p)
 }
 
-plot_circos = function(input, control, title, cytoband_path, chromosomes, annotations=NULL, links=NULL, circos_bw=1e6-1, cex=5, colors=c(neutral="#999999", input="#FFCB00", control="#FF5700")) {
+plot_circos = function(input, control, title, cytoband_path, chromosomes, bait_region=NULL, annotations=NULL, links=NULL, circos_bw=1e6-1, cex=5, colors=c(neutral="#999999", input="#FFCB00", control="#FF5700")) {
   cytoband = circlize::read.cytoband(cytoband_path)
   cytoband_df = data.frame(cytoband$chr.len) %>% tibble::rownames_to_column("chrom") %>% dplyr::rename(chrom_length="cytoband.chr.len")
 
@@ -180,6 +190,7 @@ plot_circos = function(input, control, title, cytoband_path, chromosomes, annota
     stop(unknown_chroms_err)
   }
 
+
   if(has_control) {
     scale = c(input=1, control=nrow(input)/nrow(control))
     data_sum = rbind(input %>% dplyr::mutate(circos_signal="input"), control %>% dplyr::mutate(circos_signal="control"))
@@ -191,19 +202,14 @@ plot_circos = function(input, control, title, cytoband_path, chromosomes, annota
     dplyr::inner_join(cytoband_df, by="chrom") %>%
     dplyr::group_by(circos_signal, chrom_length, chrom) %>%
     dplyr::do((function(d){
-      # x_ranges = GenomicRanges::makeGRangesFromDataFrame(d, ignore.strand=T)
-      # cov_ranges = as(GenomicRanges::coverage(x_ranges), "GRanges")
-      # as.data.frame(cov_ranges) %>%
-      #   dplyr::mutate(count=score, count_log10=ifelse(count>0, log10(count), 0)) %>%
-      #   dplyr::select(start, end, count=score, count_log10)
-
+      dd<<-d
       h = hist(d$start, plot=F, breaks=c(seq(1, d$chrom_length[1], by=circos_bw), d$chrom_length[1]))
       data.frame(start=h$breaks[-length(h$breaks)], end=h$breaks[-1]-1, count=scale[d$circos_signal[1]]*h$count, count_log10=ifelse(h$count>0, log10(h$count), 0))
     })(.)) %>%
     dplyr::mutate(start=pmax(1, start), end=pmin(end, chrom_length-1)) %>%
-    dplyr::mutate(circos_col=paste0("count_log10.", circos_signal)) %>%
+    dplyr::mutate(circos_col=paste0("count_log10.", circos_signal), circos_chrom=chrom) %>%
     dplyr::filter(end<=chrom_length) %>%
-    reshape2::dcast(chrom + start + end + chrom_length ~ circos_col, value.var="count_log10")
+    reshape2::dcast(chrom + start + end + chrom_length + circos_chrom ~ circos_col, value.var="count_log10")
 
   if(has_control) {
     circos_ymax = max(c(data_sum$count_log10.input, data_sum$count_log10.control))
@@ -216,6 +222,10 @@ plot_circos = function(input, control, title, cytoband_path, chromosomes, annota
   circos_ylabels = circos_ylabels[circos_ylabels<=10**circos_ymax]
   circos_yaxis = log10(circos_ylabels)
   circos_yaxis_pal = circlize::colorRamp2(circos_yaxis, colorRampPalette(rev(RColorBrewer::brewer.pal(5, "Blues")))(length(circos_yaxis)), transparency=0.8)
+
+  colors_darker = darker_colors(colors, 0.2)
+  # barplot(rep(1,3), col=colors_darker)
+  # barplot(rep(1,3), col=colors)
 
   circos.par("gap.degree"=c(rep(1, length(chromosomes)-1), 5))
   par(cex=cex, cex.main=cex)
@@ -233,25 +243,38 @@ plot_circos = function(input, control, title, cytoband_path, chromosomes, annota
           }
         }
 
+        if(!is.null(bait_region) & bait_region$chrom==value$circos_chrom[1]) {
+          bait_breaks = sapply(rr$start, function(z) { any(z>=bait_region$start) }) & sapply(rr$end, function(z) { any(z<=bait_region$end) })
+          colors_neutral = sapply(bait_breaks, function(z) { ifelse(z, colors_darker["neutral"], colors["neutral"]) })
+          colors_input = sapply(bait_breaks, function(z) { ifelse(z, colors_darker["input"], colors["input"]) })
+          colors_control = sapply(bait_breaks, function(z) { ifelse(z, colors_darker["control"], colors["control"]) })
+        } else {
+          colors_neutral = olors["neutral"]
+          colors_input = colors["input"]
+          colors_control = colors["control"]
+        }
+
         if(has_control) {
           count_log10.pmin = pmin(value$count_log10.input, value$count_log10.control)
-          circlize::circos.rect(xleft=region$start, xright=region$end+1, ybottom=0, ytop=count_log10.pmin, col=colors["neutral"], border=NA)
+          circlize::circos.rect(xleft=region$start, xright=region$end+1, ybottom=0, ytop=count_log10.pmin, col=colors_neutral, border=NA)
 
           f = value$count_log10.input>count_log10.pmin
-          if(any(f)) circlize::circos.rect(xleft=region$start[f], xright=region$end[f]+1, ybottom=count_log10.pmin[f], ytop=value$count_log10.input[f], col=colors["input"], border=NA)
+          if(any(f)) circlize::circos.rect(xleft=region$start[f], xright=region$end[f]+1, ybottom=count_log10.pmin[f], ytop=value$count_log10.input[f], col=colors_input[f], border=NA)
 
           f = value$count_log10.control>count_log10.pmin
-          if(any(f)) circlize::circos.rect(xleft=region$start[f], xright=region$end[f]+1, ybottom=count_log10.pmin[f], ytop=value$count_log10.control[f], col=colors["control"], border=NA)
+          if(any(f)) circlize::circos.rect(xleft=region$start[f], xright=region$end[f]+1, ybottom=count_log10.pmin[f], ytop=value$count_log10.control[f], col=colors_control[f], border=NA)
         } else {
-          circlize::circos.rect(xleft=region$start, xright=region$end+1, ybottom=0, ytop=value$count_log10.input, col="#999999", border=NA)
+          circlize::circos.rect(xleft=region$start, xright=region$end+1, ybottom=0, ytop=value$count_log10.input, col=colors_neutral, border=NA)
         }
   })
 
   if(!is.null(annotations) && length(annotations)>0) {
-    circlize::circos.genomicTrack(annotations, bg.border=NA, ylim=c(0,1), track.height=0.04, cell.padding=c(0,0),
-        panel.fun = function(region, value, ...) {
-          circlize::circos.rect(xleft=region$start, xright=region$end, ybottom=0, ytop=1, col="#330000", border="#330000")
-    })
+    for(n in names(annotations)) {
+      circlize::circos.genomicTrack(annotations[n], bg.border=NA, ylim=c(0,1), track.height=0.04, cell.padding=c(0,0),
+          panel.fun = function(region, value, ...) {
+            circlize::circos.rect(xleft=region$start, xright=region$end, ybottom=0, ytop=1, col="#330000", border="#330000")
+      })
+    }
   }
 
   if(!is.null(links)) {

@@ -236,6 +236,9 @@ server <- function(input, output, session) {
     llocal = shiny::isolate(input$llocal)
     model = shiny::isolate(input$model)
     circos_bw = shiny::isolate(input$circos_bw)
+    effective_size = c("hg19"=2.7e9, "mm9"=1.87e9, "mm10"=1.87e9)[shiny::isolate(input$genome)]
+    exttype = shiny::isolate(input$exttype)
+    maxgap = shiny::isolate(input$maxgap)
 
     genome_path = file.path(genomes_path, model, paste0(model, ".fa"))
     cytoband_path = file.path(genomes_path, model, "annotation/cytoBand.txt")
@@ -255,8 +258,7 @@ server <- function(input, output, session) {
     # Vivien's
     #
     # setwd("/home/s215v/Workspace/HTGTS/QCReport")
-    # r = list(); width = 500; height=500; circos_bw=50000; circos_chromosomes="chr6"; pileup=5; exclude_repeats = F; exclude_bait_region = T; bait_region = 500000; extsize = 2000; qvalue = 0.001; slocal = 2000; llocal = 10000000; model = "mm10"; genomes_path = "/home/s215v/Workspace/HTGTS/genomes"
-    # r = list(); width = 500; height=500; circos_bw=50000; circos_chromosomes="chr6"; pileup=5; exclude_repeats = F; exclude_bait_region = T; bait_region = 500000; extsize = 10000; qvalue = 0.01; slocal = 50000; llocal = 10000000; model = "mm10"; genomes_path = "/home/s215v/Workspace/HTGTS/genomes"
+    # r = list(); width = 1200; height=1200; effective_size=1.87e9; exttype="along"; circos_bw=50000; circos_chromosomes="chr6"; pileup=5; exclude_repeats = F; exclude_bait_region = T; bait_region = 1500000; extsize=10000; maxgap=extsize*4;  qvalue = 0.01; slocal = 50000; llocal = 10000000; model = "mm10"; genomes_path = "genomes"
     # session = list(userData=list(
     #   repeats_summary_svg="Vivien/reports/repeats_summary.svg",
     #   junctions_venn_svg = "Vivien/reports/junctions_venn.svg",
@@ -315,7 +317,7 @@ server <- function(input, output, session) {
       tlx_df = tlx_mark_offtargets(tlx_df, offtarget2bait_df)
     }
 
-    r$macs_df = tlx_macs2(tlx_df, extsize=extsize, qvalue=qvalue, pileup=pileup, slocal=slocal, llocal=llocal, exclude_bait_region=exclude_bait_region, exclude_repeats=exclude_repeats)
+    r$macs_df = tlx_macs2(tlx_df, effective_size=effective_size, extsize=extsize, maxgap=maxgap, exttype=exttype, qvalue=qvalue, pileup=pileup, slocal=slocal, llocal=llocal, exclude_bait_region=exclude_bait_region, exclude_repeats=exclude_repeats)
     if(!is.null(offtarget2bait_df)) {
       r$macs_df = r$macs_df %>%
         dplyr::left_join(offtarget2bait_df, by=c("macs_sample"="bait_sample")) %>%
@@ -480,8 +482,9 @@ server <- function(input, output, session) {
       for(gr in unique(tlx_df$tlx_group)) {
         tlx_df.gr = tlx_df %>% dplyr::filter(tlx_group==gr)
         macs_df.gr = r$macs_df %>% dplyr::filter(macs_group==gr)
-        baits_df.gr = baits_df %>% dplyr::distinct(bait_group, .keep_all=T)
+        baits_df.gr = baits_df %>% dplyr::distinct(bait_group, .keep_all=T) %>% dplyr::filter(bait_group==gr)
         hits_df.gr = macs_df.gr %>% dplyr::select(chrom=macs_chrom, start=macs_start, end=macs_end)
+        bait_region.gr = baits_df.gr %>% dplyr::mutate(start=bait_start-bait_region/2, end=bait_end+bait_region/2) %>% dplyr::select(chrom=bait_chrom, start, end)
 
         links_df.gr = macs_df.gr %>% dplyr::inner_join(baits_df.gr, by=c("macs_group"="bait_group"))
         if("macs_is_offtarget" %in% colnames(links_df.gr)) {
@@ -493,8 +496,9 @@ server <- function(input, output, session) {
           dplyr::select(chrom1=macs_chrom, start1=macs_start, end1=macs_end, chrom2=bait_chrom, start2=bait_start, end2=bait_end, color)
 
         plot_circos(
-          input=tlx_df.gr %>% dplyr::filter(!tlx_control) %>% dplyr::select(chrom=Rname, start=Rstart, end=Rend),
-          control=tlx_df.gr %>% dplyr::filter(tlx_control) %>% dplyr::select(chrom=Rname, start=Rstart, end=Rend),
+          input=tlx_df.gr %>% dplyr::filter(!tlx_control) %>% dplyr::select(chrom=Rname, start=Junction, end=Junction),
+          control=tlx_df.gr %>% dplyr::filter(tlx_control) %>% dplyr::select(chrom=Rname, start=Junction, end=Junction),
+          bait_region=bait_region.gr,
           title=gr,
           annotations=list("hits"=hits_df.gr),
           cytoband_path=cytoband_path,

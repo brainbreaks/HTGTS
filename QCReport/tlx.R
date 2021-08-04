@@ -191,47 +191,53 @@ tlx_mark_repeats = function(tlx_df, repeatmasker_df) {
     data.frame()
 }
 
-tlx_macs2 = function(tlx_df, qvalue=0.01, pileup=1, extsize=2000, slocal=50000, llocal=10000000, exclude_bait_region=F, exclude_repeats=F, exclude_offtargets=F, exttype=c("along", "symmetrical", "none")) {
+tlx_macs2 = function(tlx_df, effective_size, maxgap=NULL, qvalue=0.01, pileup=1, extsize=2000, slocal=50000, llocal=10000000, exclude_bait_region=F, exclude_repeats=F, exclude_offtargets=F, exttype=c("along", "symmetrical", "none")) {
   if(exclude_bait_region && !("tlx_is_bait_junction" %in% colnames(tlx_df))) {
     stop("tlx_is_bait_junction is not found in tlx data frame")
   }
 
+  macs2_tlx_df = tlx_df
+
   if(exclude_offtargets) {
-    if(!("tlx_is_offtarget" %in% colnames(tlx_df))) {
+    if(!("tlx_is_offtarget" %in% colnames(macs2_tlx_df))) {
       stop("tlx_is_offtarget is not found in tlx data frame")
     }
-    tlx_df = tlx_df %>% dplyr::filter(!tlx_is_offtarget)
+    macs2_tlx_df = macs2_tlx_df %>% dplyr::filter(!tlx_is_offtarget)
   }
   if(exclude_repeats) {
-    if(!("tlx_repeatmasker_class" %in% colnames(tlx_df))) {
+    if(!("tlx_repeatmasker_class" %in% colnames(macs2_tlx_df))) {
       stop("tlx_repeatmasker_class is not found in tlx data frame")
     }
-    tlx_df = tlx_df %>% dplyr::filter(is.na(tlx_repeatmasker_class))
+    macs2_tlx_df = macs2_tlx_df %>% dplyr::filter(is.na(tlx_repeatmasker_class))
   }
 
-  tlx_df = tlx_df %>%
+  macs2_tlx_df = macs2_tlx_df %>%
     dplyr::filter(!exclude_bait_region | !tlx_is_bait_junction) %>%
     dplyr::mutate(bed_strand=ifelse(Strand=="1", "-", "+"))
 
   # @TODO: I think macs does this internally
-  if(exttype=="along") {
-    tlx_df = tlx_df %>% dplyr::mutate(bed_start=ifelse(Strand=="-1", Junction-extsize, Junction-1), bed_end=ifelse(Strand=="-1", Junction, Junction+extsize-1))
+  if(exttype[1]=="along") {
+    macs2_tlx_df = macs2_tlx_df %>% dplyr::mutate(bed_start=ifelse(Strand=="-1", Junction-extsize, Junction-1), bed_end=ifelse(Strand=="-1", Junction, Junction+extsize-1))
   } else {
-    if(exttype=="symmetrical") {
-      tlx_df = tlx_df %>% dplyr::mutate(bed_start=Junction-ceiling(extsize/2), bed_end=Junction+ceiling(extsize/2))
+    if(exttype[1]=="symmetrical") {
+      macs2_tlx_df = macs2_tlx_df %>% dplyr::mutate(bed_start=Junction-ceiling(extsize/2), bed_end=Junction+ceiling(extsize/2))
     } else {
-      tlx_df = tlx_df %>% dplyr::mutate(bed_start=Junction, bed_end=Junction+1)
+      macs2_tlx_df = macs2_tlx_df %>% dplyr::mutate(bed_start=Junction, bed_end=Junction+1)
     }
   }
 
+  if(is.null(maxgap) || maxgap==0 || maxgap=="") {
+    maxgap = NULL
+  }
+
   macs_df.all = data.frame()
-  for(gr in unique(tlx_df$tlx_group)) {
-    tlx_df.gr = tlx_df %>% dplyr::filter(tlx_group==gr)
+  for(gr in unique(macs2_tlx_df$tlx_group)) {
+    tlx_df.gr = macs2_tlx_df %>% dplyr::filter(tlx_group==gr)
 
     f_input_bed = tempfile()
     f_control_bed = tempfile()
-    f_input_bed = "tmp/input.bed"
-    f_control_bed = "tmp/control.bed"
+    # f_input_bed = "tmp/input.bed"
+    # f_control_bed = "tmp/control.bed"
 
     tlx_df.gr %>%
       dplyr::filter(!tlx_control) %>%
@@ -245,11 +251,11 @@ tlx_macs2 = function(tlx_df, qvalue=0.01, pileup=1, extsize=2000, slocal=50000, 
         readr::write_tsv(file=f_control_bed, na="", col_names=F)
 
       log("Running MACS with control")
-      macs_df = macs2(name=basename(f_input_bed), sample=f_input_bed, control=f_control_bed, extsize=extsize, qvalue=qvalue, slocal=slocal, llocal=llocal, output_dir=dirname(f_input_bed)) %>%
+      macs_df = macs2(name=basename(f_input_bed), sample=f_input_bed, control=f_control_bed, maxgap=maxgap, effective_size=effective_size, extsize=extsize, qvalue=qvalue, slocal=slocal, llocal=llocal, output_dir=dirname(f_input_bed)) %>%
         dplyr::mutate(macs_group=gr)
     } else {
       log("Running MACS without control")
-      macs_df = macs2(name=basename(f_input_bed), sample=f_input_bed, extsize=extsize, qvalue=qvalue, slocal=slocal, llocal=llocal, output_dir=dirname(f_input_bed)) %>%
+      macs_df = macs2(name=basename(f_input_bed), sample=f_input_bed, maxgap=maxgap, effective_size=effective_size, extsize=extsize, qvalue=qvalue, slocal=slocal, llocal=llocal, output_dir=dirname(f_input_bed)) %>%
         dplyr::mutate(macs_group=gr)
     }
 
