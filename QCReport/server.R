@@ -135,25 +135,23 @@ server <- function(input, output, session) {
           ))
         session$userData[[paste0("tlx_order", group_i, "_observer")]] = observeEvent(input[[order_id]], event({
           log("tlx_order", group_i, "_observer")
-
-          samples_control = input[[order_id]][[paste0(order_id, "_control")]]
-          samples_input = input[[order_id]][[paste0(order_id, "_input")]]
-          log(samples_control)
-          log(samples_input)
+          input_order = input[[order_id]]
+          samples_control = input_order[[paste0(order_id, "_control")]]
+          samples_input = input_order[[paste0(order_id, "_input")]]
 
           r$tlx_df = isolate(r$tlx_df) %>%
             dplyr::group_by(tlx_group) %>%
-            dplyr::mutate(tlx_group_i=dplyr::case_when(
-              tlx_group==group_id & tlx_control~match(tlx_sample, samples_control),
-              tlx_group==group_id & !tlx_control~match(tlx_sample, samples_input),
-              T~tlx_group_i)) %>%
             dplyr::mutate(tlx_control=dplyr::case_when(
               tlx_group==group_id & tlx_sample %in% samples_control~T,
               tlx_group==group_id & tlx_sample %in% samples_input~F,
               T~tlx_control)) %>%
+            dplyr::mutate(tlx_group_i=dplyr::case_when(
+              tlx_group==group_id & tlx_control~match(tlx_sample, samples_control),
+              tlx_group==group_id & !tlx_control~match(tlx_sample, samples_input),
+              T~tlx_group_i)) %>%
             dplyr::ungroup()
 
-          log(sum(is.na(r$tlx_df$tlx_group_i)))
+          print(r$tlx_df %>% dplyr::distinct(tlx_group, tlx_control, tlx_group_i, tlx_sample))
         }))
       }
 
@@ -234,6 +232,17 @@ server <- function(input, output, session) {
     log("input$model")
     r$repeatmasker_df = repeatmasker_read(file.path(genomes_path, input$model, "annotation/ucsc_repeatmasker.tsv"), columns=c("repeatmasker_chrom", "repeatmasker_start", "repeatmasker_end", "repeatmasker_class"))
 
+    # load("a.rda")
+    # junctions_diff = tlx_df %>%
+    #   dplyr::filter(!tlx_is_bait_junction) %>%
+    #   dplyr::distinct(Rname, Junction) %>%
+    #   dplyr::arrange(Junction) %>%
+    #   dplyr::group_by(Rname) %>%
+    #   dplyr::do((function(z){ data.frame(diff=diff(z$Junction)) })(.)) %>%
+    #   dplyr::ungroup() %>%
+    #   dplyr::filter(diff>=2000 & diff <= 1e5)
+    # plot(density(junctions_diff$diff, bw=100))
+
     cytoband_path = file.path(genomes_path, input$model, "annotation/cytoBand.txt")
     cytoband = circlize::read.cytoband(cytoband_path)
     shiny::updateSelectInput(inputId="circos_chromosomes", choices=cytoband$chromosome, selected=c())
@@ -243,19 +252,30 @@ server <- function(input, output, session) {
 
 
   output$input_validation <- renderText({
-    log(input$extsize, " <= ", input$slocal)
-    tlx_df = r$tlx_df
-    save(tlx_df, file="a.rda")
-    load("a.rda")
-    r = list(tlx_df=tlx_df)
-    input = list(paired_control=T, paired_samples=T)
-
-    # r$tlx_df %>% dplyr::group_by(tlx_group, tlx_group_i) %>% dplyr::summarize(ctrl=any(tlx_control), smpl=any(!tlx_control)) %>% dplyr::ungroup()
-
-    shiny::validate(need(!any(r$tlx_df$tlx_control) || input$extsize <= input$slocal, 'slocal should be less or equal to extsize when calling peaks with background'))
+    log("output$input_validation")
+    shiny::validate(need(input$extsize <= input$slocal, 'slocal should be less or equal to extsize when calling peaks with background'))
     shiny::validate(need(any(!r$tlx_df$tlx_control), 'Need to provide at least one treatment TLX'))
-    shiny::validate(need(!input$paired_control || !any(r$tlx_df$tlx_control) || all(r$tlx_df %>% dplyr::group_by(tlx_group, tlx_group_i) %>% dplyr::summarize(ctrl=any(tlx_control), smpl=any(!tlx_control)) %>% dplyr::ungroup() %>% dplyr::select(ctrl, smpl)), 'If control is provaided for each sample (paired control) the number of samples must be equal to number of controls'))
-    shiny::validate(need(!input$paired_samples || !any(!r$tlx_df$tlx_control) || all(!is.na(r$tlx_df %>% dplyr::filter(!tlx_control) %>% reshape2::dcast(tlx_group_i ~ tlx_group, fun.aggregate=length, value.var="tlx_group"))) , 'In case of paired samples each group needs to have the same amount of treatments'))
+
+    if(!is.null(r$tlx_df)) {
+      log("Validate tlx files")
+
+      if(input$paired_controls && any(r$tlx_df$tlx_control)) {
+        paired_controls_table = r$tlx_df %>%
+          dplyr::group_by(tlx_group, tlx_group_i) %>%
+          dplyr::summarize(ctrl=any(tlx_control), smpl=any(!tlx_control)) %>%
+          dplyr::ungroup() %>%
+          dplyr::select(ctrl, smpl)
+        shiny::validate(need(all(paired_controls_table==T), 'If control is provaided for each sample (paired control) the number of samples must be equal to number of controls'))
+      }
+
+      if(input$paired_samples & any(!r$tlx_df$tlx_control)) {
+        paired_samples_table = r$tlx_df %>%
+          dplyr::filter(!tlx_control) %>%
+          reshape2::dcast(tlx_group_i ~ tlx_group, fun.aggregate=length, value.var="tlx_group") %>%
+          dplyr::select(-tlx_group_i)
+        shiny::validate(need(ncol(paired_samples_table) <= 1 || all(paired_samples_table > 0), 'In case of paired samples each group needs to have the same amount of treatments'))
+      }
+    }
   })
 
   observeEvent(input$offtargets, event({
@@ -342,14 +362,6 @@ server <- function(input, output, session) {
     #
     # End Vivien's
     #
-
-
-    # macs_df = r$macs_df
-    offtargets_df = r$offtargets_df
-    save(tlx_df, offtargets_df, baits_df, genome_path, model, effective_size, extsize, maxgap, exttype, qvalue, pileup, slocal, llocal, exclude_bait_region, exclude_repeats, bait_region, cytoband_path, circos_bw, circos_chromosomes, file="tlx_df.rda")
-    # load("tlx_df.rda"); r = list(offtargets_df=offtargets_df)
-
-
     groups_n = length(unique(tlx_df$tlx_group))
     if(groups_n>1) {
       groups_grid = matrix(1:(ceiling(groups_n/2)*2), ncol=2, byrow=T)
@@ -574,10 +586,6 @@ server <- function(input, output, session) {
       session$userData$compare_breaks_svg = tempfile(fileext=".svg")
       log(paste0("Plot compare plot ", session$userData$compare_breaks_svg, " (w=", width, " h=", height, ")"))
       svg(session$userData$compare_breaks_svg, width=width/72, height=height/72, pointsize=1)
-
-      # macs_df = r$macs_df
-      # save(tlx_df, macs_df, extsize, exttype, file="tlx_df.rda")
-      # load("tlx_df.rda")
 
       if(length(unique(tlx_df$tlx_group)) > 1) {
         if(nrow(r$macs_df) > 0) {

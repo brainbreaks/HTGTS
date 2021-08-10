@@ -119,10 +119,6 @@ tlx_identify_baits = function(tlx_df, breaksite_size=19) {
 
 
 tlx_test_hits = function(tlx_df, hits_ranges, paired_samples=T, paired_control=T, extsize=10000, exttype="along") {
-  #
-  # save(tlx_df, hits_ranges, file="d.rda")
-  # load("d.rda")
-  # macs_ranges=hits_ranges
   if(exttype[1]=="along") {
     tlx_ranges  = GenomicRanges::makeGRangesFromDataFrame(tlx_df %>% dplyr::mutate(seqnames=Rname, sstart=ifelse(Strand=="-1", Junction-extsize, Junction-1), end=ifelse(Strand=="-1", Junction, Junction+extsize-1)), ignore.strand=T, keep.extra.columns=T)
   } else {
