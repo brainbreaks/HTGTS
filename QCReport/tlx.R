@@ -55,9 +55,18 @@ tlx_write_bed = function(tlx_df, file) {
     readr::write_tsv(file=file, col_names=F)
 }
 
-tlx_coverage = function(tlx_df, group=c("none", "group", "sample", "path")) {
-  tlx_coverage_ = function(x) {
-    x_ranges = GenomicRanges::makeGRangesFromDataFrame(x %>% dplyr::mutate(seqnames=Rname, start=Rstart, end=Rend), ignore.strand=T)
+tlx_coverage = function(tlx_df, group=c("none", "group", "sample", "path"), extsize, exttype) {
+  tlx_coverage_ = function(x, extsize, exttype) {
+    if(exttype[1]=="along") {
+      x_ranges  = GenomicRanges::makeGRangesFromDataFrame(x %>% dplyr::mutate(seqnames=Rname, sstart=ifelse(Strand=="-1", Junction-extsize, Junction-1), end=ifelse(Strand=="-1", Junction, Junction+extsize-1)), ignore.strand=T, keep.extra.columns=T)
+    } else {
+      if(exttype[1]=="symmetrical") {
+        x_ranges  = GenomicRanges::makeGRangesFromDataFrame(x %>% dplyr::mutate(seqnames=Rname, start=Junction-ceiling(extsize/2), end=Junction+ceiling(extsize/2)), ignore.strand=T, keep.extra.columns=T)
+      } else {
+        x_ranges  = GenomicRanges::makeGRangesFromDataFrame(x %>% dplyr::mutate(seqnames=Rname, start=Junction, end=Junction+1), ignore.strand=T, keep.extra.columns=T)
+      }
+    }
+
     cov_ranges = as(GenomicRanges::coverage(x_ranges), "GRanges")
     as.data.frame(cov_ranges) %>%
       dplyr::rename(tlxcov_chrom="seqnames", tlxcov_start="start", tlxcov_end="end", tlxcov_pileup="score") %>%
@@ -68,15 +77,15 @@ tlx_coverage = function(tlx_df, group=c("none", "group", "sample", "path")) {
     return(tlx_coverage_(tlx_df))
   }
   if(group=="group") {
-    return(tlx_df %>% group_by(tlx_group) %>% do(tlx_coverage_(.)) %>% dplyr::ungroup())
+    return(tlx_df %>% group_by(tlx_group, tlx_control) %>% do(tlx_coverage_(., extsize=extsize, exttype=exttype)) %>% dplyr::ungroup())
   }
 
   if(group=="sample") {
-    return(tlx_df %>% group_by(tlx_group, tlx_sample) %>% do(tlx_coverage_(.)) %>% dplyr::ungroup())
+    return(tlx_df %>% group_by(tlx_group, tlx_sample, tlx_control) %>% do(tlx_coverage_(., extsize=extsize, exttype=exttype)) %>% dplyr::ungroup())
   }
 
   if(group=="path") {
-    return(tlx_df %>% group_by(tlx_group, tlx_sample, tlx_path) %>% do(tlx_coverage_(.)) %>% dplyr::ungroup())
+    return(tlx_df %>% group_by(tlx_group, tlx_sample, tlx_control, tlx_path) %>% do(tlx_coverage_(., extsize=extsize, exttype=exttype)) %>% dplyr::ungroup())
   }
 
   stop("Unknown group")
@@ -110,10 +119,20 @@ tlx_identify_baits = function(tlx_df, breaksite_size=19) {
 
 
 tlx_test_hits = function(tlx_df, hits_ranges, paired_samples=T, paired_control=T, extsize=10000, exttype="along") {
-
+  #
   # save(tlx_df, hits_ranges, file="d.rda")
   # load("d.rda")
   # macs_ranges=hits_ranges
+  if(exttype[1]=="along") {
+    tlx_ranges  = GenomicRanges::makeGRangesFromDataFrame(tlx_df %>% dplyr::mutate(seqnames=Rname, sstart=ifelse(Strand=="-1", Junction-extsize, Junction-1), end=ifelse(Strand=="-1", Junction, Junction+extsize-1)), ignore.strand=T, keep.extra.columns=T)
+  } else {
+    if(exttype[1]=="symmetrical") {
+      tlx_ranges  = GenomicRanges::makeGRangesFromDataFrame(tlx_df %>% dplyr::mutate(seqnames=Rname, start=Junction-ceiling(extsize/2), end=Junction+ceiling(extsize/2)), ignore.strand=T, keep.extra.columns=T)
+    } else {
+      tlx_ranges  = GenomicRanges::makeGRangesFromDataFrame(tlx_df %>% dplyr::mutate(seqnames=Rname, start=Junction, end=Junction+1), ignore.strand=T, keep.extra.columns=T)
+    }
+  }
+
 
   hits_df = as.data.frame(hits_ranges) %>% dplyr::mutate(compare_chrom=seqnames, compare_start=start, compare_end=end)
   hits_ranges = GenomicRanges::makeGRangesFromDataFrame(hits_df, keep.extra.columns=T)
@@ -167,43 +186,49 @@ tlx_test_hits = function(tlx_df, hits_ranges, paired_samples=T, paired_control=T
       dplyr::mutate(compare_n.control_adj=compare_n.control*(compare_total/compare_total.control))
   }
 
-  z_sum.test = as.data.frame(t(apply(combn(unique(normcounts_sum_df$compare_group), 2), 2, sort))) %>%
-    dplyr::rename(compare_group1="V1", compare_group2="V2") %>%
-    dplyr::inner_join(normcounts_sum_df %>% dplyr::rename(compare_n.norm1="compare_n.norm", compare_n1="compare_n", compare_total1="compare_total", compare_n.control1="compare_n.control", compare_n.control_adj1="compare_n.control_adj", compare_total.control1="compare_total.control"), by=c("compare_group1"="compare_group")) %>%
-    dplyr::inner_join(normcounts_sum_df %>% dplyr::rename(compare_n.norm2="compare_n.norm", compare_n2="compare_n", compare_total2="compare_total", compare_n.control2="compare_n.control", compare_n.control_adj2="compare_n.control_adj", compare_total.control2="compare_total.control"), by=c("compare_group2"="compare_group", "compare_group_i", "compare_chrom", "compare_start", "compare_end")) %>%
-    # dplyr::filter(compare_group1=="group 1" & compare_group2=="group 2" & compare_chrom=="chr6" & compare_start==77128688 & compare_end==77564403) %>%
-    dplyr::group_by(compare_group1, compare_group2, compare_chrom, compare_start, compare_end) %>%
-    dplyr::do((function(z){
-      zz<<-z
+  if(length(unique(tlx_df$tlx_group)))
+  {
+    z_sum.test = as.data.frame(t(apply(combn(unique(normcounts_sum_df$compare_group), 2), 2, sort))) %>%
+      dplyr::rename(compare_group1="V1", compare_group2="V2") %>%
+      dplyr::inner_join(normcounts_sum_df %>% dplyr::rename(compare_n.norm1="compare_n.norm", compare_n1="compare_n", compare_total1="compare_total", compare_n.control1="compare_n.control", compare_n.control_adj1="compare_n.control_adj", compare_total.control1="compare_total.control"), by=c("compare_group1"="compare_group")) %>%
+      dplyr::inner_join(normcounts_sum_df %>% dplyr::rename(compare_n.norm2="compare_n.norm", compare_n2="compare_n", compare_total2="compare_total", compare_n.control2="compare_n.control", compare_n.control_adj2="compare_n.control_adj", compare_total.control2="compare_total.control"), by=c("compare_group2"="compare_group", "compare_group_i", "compare_chrom", "compare_start", "compare_end")) %>%
+      # dplyr::filter(compare_group1=="group 1" & compare_group2=="group 2" & compare_chrom=="chr6" & compare_start==77128688 & compare_end==77564403) %>%
+      dplyr::group_by(compare_group1, compare_group2, compare_chrom, compare_start, compare_end) %>%
+      dplyr::do((function(z){
+        zz<<-z
 
-      z.groups = c(z$compare_group1[1], z$compare_group2[1])
-      z.fold = mean(z$compare_n1/z$compare_total1) / mean(z$compare_n2/z$compare_total2)
+        z.groups = c(z$compare_group1[1], z$compare_group2[1])
+        z.fold = mean(z$compare_n1/z$compare_total1) / mean(z$compare_n2/z$compare_total2)
 
-      # Reapeated measures ANOVA
-      z.test_data = z %>%
-        reshape2::melt(measure.vars=c("compare_n1", "compare_n.control_adj1", "compare_n2", "compare_n.control_adj2")) %>%
-        dplyr::select(compare_group_i, treatment=variable, breaks=value) %>%
-        dplyr::mutate(group=z.groups[as.numeric(gsub(".*([0-9])$", "\\1", treatment))], treatment=gsub("([0-9])$", "", treatment)) %>%
-        dplyr::mutate(treatment=c(compare_n.control="control", compare_n="treatment", compare_n.control_adj="control")[treatment]) %>%
-        dplyr::mutate(group=factor(group), treatment=factor(treatment), compare_group_i=factor(compare_group_i)) %>%
-        tibble::tibble()
-      z.aov = rstatix::anova_test(data=z.test_data, dv=breaks, wid=compare_group_i, within=c(treatment, group))
-      z.aov_pval = data.frame(z.aov) %>% dplyr::filter(Effect=="group") %>% .$p
+        # Reapeated measures ANOVA
+        z.test_data = z %>%
+          reshape2::melt(measure.vars=c("compare_n1", "compare_n.control_adj1", "compare_n2", "compare_n.control_adj2")) %>%
+          dplyr::select(compare_group_i, treatment=variable, breaks=value) %>%
+          dplyr::mutate(group=z.groups[as.numeric(gsub(".*([0-9])$", "\\1", treatment))], treatment=gsub("([0-9])$", "", treatment)) %>%
+          dplyr::mutate(treatment=c(compare_n.control="control", compare_n="treatment", compare_n.control_adj="control")[treatment]) %>%
+          dplyr::mutate(group=factor(group), treatment=factor(treatment), compare_group_i=factor(compare_group_i)) %>%
+          tibble::tibble()
+        z.aov = rstatix::anova_test(data=z.test_data, dv=breaks, wid=compare_group_i, within=c(treatment, group))
+        z.aov_pval = data.frame(z.aov) %>% dplyr::filter(Effect=="group") %>% .$p
 
-      i.contignency = lapply(split(z, 1:nrow(z)), function(y) matrix(as.numeric(y[c("compare_n1", "compare_n2", "compare_total1", "compare_total2")]), ncol=2))
-      if(length(i.contignency)>=2) {
-        i.contignency = abind::abind(i.contignency, along=3)
-        i.test = mantelhaen.test(i.contignency)
-      } else {
-        i.test = fisher.test(i.contignency[[1]])
-      }
+        i.contignency = lapply(split(z, 1:nrow(z)), function(y) matrix(as.numeric(y[c("compare_n1", "compare_n2", "compare_total1", "compare_total2")]), ncol=2))
+        if(length(i.contignency)>=2) {
+          i.contignency = abind::abind(i.contignency, along=3)
+          i.test = mantelhaen.test(i.contignency)
+        } else {
+          i.test = fisher.test(i.contignency[[1]])
+        }
 
-      z %>%
-        dplyr::slice(1) %>%
-        dplyr::mutate(compare_pvalue=i.test$p.value, compare_odds=i.test$estimate, compare_aov_pvalue=z.aov_pval, compare_fold=z.fold) %>%
-        dplyr::select(compare_group1, compare_group2, compare_chrom, compare_start, compare_end, compare_pvalue, compare_odds, compare_aov_pvalue, compare_fold)
-    })(.)) %>%
-    data.frame()
+        z %>%
+          dplyr::slice(1) %>%
+          dplyr::mutate(compare_pvalue=i.test$p.value, compare_odds=i.test$estimate, compare_aov_pvalue=z.aov_pval, compare_fold=z.fold) %>%
+          dplyr::select(compare_group1, compare_group2, compare_chrom, compare_start, compare_end, compare_pvalue, compare_odds, compare_aov_pvalue, compare_fold)
+      })(.)) %>%
+      data.frame()
+  } else {
+    compare_test.cols = readr::cols(compare_group1=readr::col_character(), compare_group2=readr::col_character(), compare_chrom=readr::col_character(), compare_start=readr::col_double(), compare_end=readr::col_double(), compare_pvalue=readr::col_double(), compare_odds=readr::col_double(), compare_aov_pvalue=readr::col_double(), compare_fold=readr::col_double())
+    z_sum.test = blank_tibble(compare_test.cols)
+  }
 
   list(test=z_sum.test, data=normcounts_df)
 }

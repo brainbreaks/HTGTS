@@ -240,9 +240,19 @@ server <- function(input, output, session) {
 
   output$input_validation <- renderText({
     log(input$extsize, " <= ", input$slocal)
-    shiny::validate(need(!any(r$tlx_df$tlx_control) || input$extsize <= input$slocal, 'slocal should be less or equal to extsize when calling peaks with background'))
-  })
+    tlx_df = r$tlx_df
+    save(tlx_df, file="a.rda")
+    load("a.rda")
+    r = list(tlx_df=tlx_df)
+    input = list(paired_control=T, paired_samples=T)
 
+    r$tlx_df %>% dplyr::group_by(tlx_group, tlx_group_i) %>% dplyr::summarize(ctrl=any(tlx_control), smpl=any(!tlx_control)) %>% dplyr::ungroup() %>% dplyr::select(ctrl, smpl)
+
+    shiny::validate(need(!any(r$tlx_df$tlx_control) || input$extsize <= input$slocal, 'slocal should be less or equal to extsize when calling peaks with background'))
+    shiny::validate(need(any(!r$tlx_df$tlx_control), 'Need to provide at least one treatment TLX'))
+    shiny::validate(need(!input$paired_control || !any(r$tlx_df$tlx_control) || all(r$tlx_df %>% dplyr::group_by(tlx_group, tlx_group_i) %>% dplyr::summarize(ctrl=any(tlx_control), smpl=any(!tlx_control)) %>% dplyr::ungroup() %>% dplyr::select(ctrl, smpl)), 'If control is provaided for each sample (paired control) the number of samples must be equal to number of controls'))
+    shiny::validate(need(!input$paired_samples || !any(!r$tlx_df$tlx_control) || all(!is.na(r$tlx_df %>% dplyr::filter(!tlx_control) %>% reshape2::dcast(tlx_group_i ~ tlx_group, fun.aggregate=length, value.var="tlx_group"))) , 'In case of paired samples each group needs to have the same amount of treatments'))
+  })
 
   observeEvent(input$offtargets, event({
     log("input$offtargets")
@@ -257,6 +267,7 @@ server <- function(input, output, session) {
 
     exclude_repeats = shiny::isolate(input$exclude_repeats)
     exclude_bait_region = shiny::isolate(input$exclude_bait_region)
+    bait_region = shiny::isolate(input$bait_region)
     extsize = shiny::isolate(input$extsize)
     qvalue = shiny::isolate(input$qvalue)
     pileup = shiny::isolate(input$pileup)
@@ -267,6 +278,8 @@ server <- function(input, output, session) {
     effective_size = c("hg19"=2.7e9, "mm9"=1.87e9, "mm10"=1.87e9)[shiny::isolate(input$model)]
     exttype = shiny::isolate(input$exttype)
     maxgap = shiny::isolate(input$maxgap)
+    paired_controls = shiny::isolate(input$paired_controls)
+    paired_samples = shiny::isolate(input$paired_samples)
 
     genome_path = file.path(genomes_path, model, paste0(model, ".fa"))
     cytoband_path = file.path(genomes_path, model, "annotation/cytoBand.txt")
@@ -327,6 +340,12 @@ server <- function(input, output, session) {
     #
 
 
+    # macs_df = r$macs_df
+    offtargets_df = r$offtargets_df
+    save(tlx_df, offtargets_df, baits_df, genome_path, model, effective_size, extsize, maxgap, exttype, qvalue, pileup, slocal, llocal, exclude_bait_region, exclude_repeats, bait_region, cytoband_path, circos_bw, circos_chromosomes, file="tlx_df.rda")
+    # load("tlx_df.rda"); r = list(offtargets_df=offtargets_df)
+
+
     groups_n = length(unique(tlx_df$tlx_group))
     if(groups_n>1) {
       groups_grid = matrix(1:(ceiling(groups_n/2)*2), ncol=2, byrow=T)
@@ -343,16 +362,12 @@ server <- function(input, output, session) {
     r$macs_df = tlx_macs2(tlx_df, effective_size=effective_size, extsize=extsize, maxgap=maxgap, exttype=exttype, qvalue=qvalue, pileup=pileup, slocal=slocal, llocal=llocal, exclude_bait_region=exclude_bait_region, exclude_repeats=exclude_repeats)
     if(!is.null(offtarget2bait_df)) {
       r$macs_df = r$macs_df %>%
-        dplyr::left_join(offtarget2bait_df, by=c("macs_sample"="bait_sample")) %>%
-        dplyr::group_by(macs_chrom, macs_start, macs_end, bait_chrom, bait_start, bait_end, macs_sample) %>%
+        dplyr::left_join(offtarget2bait_df %>% dplyr::distinct(bait_group, .keep_all=T), by=c("macs_group"="bait_group")) %>%
+        dplyr::group_by(macs_chrom, macs_start, macs_end, bait_chrom, bait_start, bait_end, macs_group) %>%
         dplyr::summarize(macs_is_offtarget=any(offtarget_chrom==macs_chrom & (offtarget_start>=macs_start & offtarget_start<=macs_end | offtarget_end>=macs_start & offtarget_start<=macs_end))) %>%
         dplyr::ungroup() %>%
         dplyr::select(dplyr::matches("^macs_"))
     }
-
-    macs_df = r$macs_df
-    save(tlx_df, macs_df, file="tlx_df.rda")
-    # load("tlx_df.rda")
 
     #
     # Junctions overview
@@ -556,46 +571,55 @@ server <- function(input, output, session) {
       log(paste0("Plot compare plot ", session$userData$compare_breaks_svg, " (w=", width, " h=", height, ")"))
       svg(session$userData$compare_breaks_svg, width=width/72, height=height/72, pointsize=1)
 
-      if(nrow(r$macs_df) > 0) {
-        log("nrow=", nrow(r$macs_df), " ncol=", ncol(r$macs_df))
-        log(colnames(r$macs_df), collapse=",")
-        macs_ranges = GenomicRanges::makeGRangesFromDataFrame(r$macs_df %>% dplyr::select(seqnames=macs_chrom, start=macs_start, end=macs_end))
-        compare_results = tlx_test_hits(tlx_df, hits_ranges=macs_ranges, paired_samples=T, paired_control=T, extsize=extsize, exttype=exttype)
-        compare_data_df = compare_results$data %>%
-          dplyr::group_by(compare_group, compare_chrom, compare_start, compare_end, compare_group_i) %>%
-          dplyr::arrange(compare_chrom, compare_start) %>%
-          dplyr::mutate(compare_coord=paste0(compare_chrom, ":", compare_start, "-", compare_end), compare_coord=factor(compare_coord, unique(compare_coord))) %>%
-          dplyr::group_by(compare_group, compare_chrom, compare_coord) %>%
-          dplyr::mutate(compare_frac_max=max(compare_frac)) %>%
-          dplyr::ungroup() %>%
-          dplyr::inner_join(compare_results$test, by=c("compare_chrom", "compare_start", "compare_end")) %>%
-          dplyr::arrange(compare_group_i) %>%
-          dplyr::mutate(compare_group_full=paste(compare_group, compare_sample, compare_chrom, compare_coord, compare_group_i, sep="-")) %>%
-          dplyr::mutate(compare_group_full=factor(compare_group_full, compare_group_full)) %>%
-          dplyr::mutate(compare_groups_list=paste0(compare_group1, "/", compare_group2))
+      # macs_df = r$macs_df
+      # save(tlx_df, macs_df, extsize, exttype, file="tlx_df.rda")
+      # load("tlx_df.rda")
 
-        compare_pval_df = compare_results$test %>%
-          dplyr::mutate(compare_coord=paste0(compare_chrom, ":", compare_start, "-", compare_end), compare_coord=factor(compare_coord, levels(compare_data_df$compare_coord))) %>%
-          dplyr::mutate(compare_pvalue_str=ifelse(compare_pvalue<1e-3, formatC(compare_pvalue, format="e", digits=2), sprintf("%0.3f", compare_pvalue))) %>%
-          dplyr::inner_join(compare_data_df %>% dplyr::distinct(compare_group, compare_chrom, compare_coord, compare_frac_max1=compare_frac_max), by=c("compare_group1"="compare_group", "compare_chrom", "compare_coord")) %>%
-          dplyr::inner_join(compare_data_df %>% dplyr::distinct(compare_group, compare_chrom, compare_coord, compare_frac_max2=compare_frac_max), by=c("compare_group2"="compare_group", "compare_chrom", "compare_coord")) %>%
-          dplyr::mutate(compare_groups_list=paste0(compare_group1, "/", compare_group2)) %>%
-          dplyr::mutate(compare_frac_max=pmax(compare_frac_max1, compare_frac_max2)) %>%
-          dplyr::select(-compare_frac_max1, -compare_frac_max2)
+      if(length(unique(tlx_df$tlx_group)) > 1) {
+        if(nrow(r$macs_df) > 0) {
+          log("nrow=", nrow(r$macs_df), " ncol=", ncol(r$macs_df))
+          log(colnames(r$macs_df), collapse=",")
+          macs_ranges = GenomicRanges::makeGRangesFromDataFrame(r$macs_df %>% dplyr::select(seqnames=macs_chrom, start=macs_start, end=macs_end))
+          compare_results = tlx_test_hits(tlx_df, hits_ranges=macs_ranges, paired_samples=paired_samples, paired_control=paired_controls, extsize=extsize, exttype=exttype)
+          compare_data_df = compare_results$data %>%
+            dplyr::group_by(compare_group, compare_chrom, compare_start, compare_end, compare_group_i) %>%
+            dplyr::arrange(compare_chrom, compare_start) %>%
+            dplyr::mutate(compare_coord=paste0(compare_chrom, ":", compare_start, "-", compare_end), compare_coord=factor(compare_coord, unique(compare_coord))) %>%
+            dplyr::group_by(compare_group, compare_chrom, compare_coord) %>%
+            dplyr::mutate(compare_frac_max=max(compare_frac)) %>%
+            dplyr::ungroup() %>%
+            dplyr::inner_join(compare_results$test, by=c("compare_chrom", "compare_start", "compare_end")) %>%
+            dplyr::arrange(compare_group_i) %>%
+            dplyr::mutate(compare_group_full=paste(compare_group, compare_sample, compare_chrom, compare_coord, compare_group_i, sep="-")) %>%
+            dplyr::mutate(compare_group_full=factor(compare_group_full, compare_group_full)) %>%
+            dplyr::mutate(compare_groups_list=paste0(compare_group1, "/", compare_group2))
 
-        p = ggplot(compare_data_df) +
-          geom_bar(aes(x=compare_coord, y=compare_frac, fill=compare_group, group=compare_group_full), stat="identity", position="dodge") +
-          geom_segment(aes(y=compare_frac_max + 0.02*max(compare_frac_max), yend=compare_frac_max + 0.02*max(compare_frac_max), x=as.numeric(compare_coord)-0.4, xend=as.numeric(compare_coord)+0.4), data=compare_pval_df) +
-          geom_text(aes(y=compare_frac_max + 0.04*max(compare_frac_max), x=as.numeric(compare_coord), label=compare_pvalue_str), data=compare_pval_df, hjust=0) +
-          facet_wrap(~compare_groups_list, scales="free_x") +
-          theme_brain() +
-          theme(legend.key.size = unit(20, 'pt')) +
-          labs(x="", y="Normalized junctions count", fill="Group") +
-          coord_flip(ylim=1.2*range(compare_data_df$compare_frac))
-        print(p)
+          compare_pval_df = compare_results$test %>%
+            dplyr::mutate(compare_coord=paste0(compare_chrom, ":", compare_start, "-", compare_end), compare_coord=factor(compare_coord, levels(compare_data_df$compare_coord))) %>%
+            dplyr::mutate(compare_pvalue_str=ifelse(compare_pvalue<1e-3, formatC(compare_pvalue, format="e", digits=2), sprintf("%0.3f", compare_pvalue))) %>%
+            dplyr::inner_join(compare_data_df %>% dplyr::distinct(compare_group, compare_chrom, compare_coord, compare_frac_max1=compare_frac_max), by=c("compare_group1"="compare_group", "compare_chrom", "compare_coord")) %>%
+            dplyr::inner_join(compare_data_df %>% dplyr::distinct(compare_group, compare_chrom, compare_coord, compare_frac_max2=compare_frac_max), by=c("compare_group2"="compare_group", "compare_chrom", "compare_coord")) %>%
+            dplyr::mutate(compare_groups_list=paste0(compare_group1, "/", compare_group2)) %>%
+            dplyr::mutate(compare_frac_max=pmax(compare_frac_max1, compare_frac_max2)) %>%
+            dplyr::select(-compare_frac_max1, -compare_frac_max2)
+
+          p = ggplot(compare_data_df) +
+            geom_bar(aes(x=compare_coord, y=compare_frac, fill=compare_group, group=compare_group_full), stat="identity", position="dodge") +
+            geom_segment(aes(y=compare_frac_max + 0.02*max(compare_frac_max), yend=compare_frac_max + 0.02*max(compare_frac_max), x=as.numeric(compare_coord)-0.4, xend=as.numeric(compare_coord)+0.4), data=compare_pval_df) +
+            geom_text(aes(y=compare_frac_max + 0.04*max(compare_frac_max), x=as.numeric(compare_coord), label=compare_pvalue_str), data=compare_pval_df, hjust=0) +
+            facet_wrap(~compare_groups_list, scales="free_x") +
+            theme_brain() +
+            theme(legend.key.size = unit(20, 'pt')) +
+            labs(x="", y="Normalized junctions count", fill="Group") +
+            coord_flip(ylim=1.2*range(compare_data_df$compare_frac))
+          print(p)
+        } else {
+          plot(c(0, 1), c(0, 1), ann=F, bty='n', type='n', xaxt='n', yaxt='n')
+          text(x=0.5, y=0.5, paste("No hits to compare"), cex=30, col="black")
+        }
       } else {
         plot(c(0, 1), c(0, 1), ann=F, bty='n', type='n', xaxt='n', yaxt='n')
-        text(x=0.5, y=0.5, paste("No hits to compare"), cex=1.6, col="black")
+        text(x=0.5, y=0.5, paste("Not enough groups to compare"), cex=30, col="black")
       }
 
       dev.off()
@@ -614,7 +638,7 @@ server <- function(input, output, session) {
       session$userData$compare_pileup_svg = tempfile(fileext=".svg")
       log(paste0("Plot compare plot ", session$userData$compare_pileup_svg, " (w=", width, " h=", height, ")"))
       svg(session$userData$compare_pileup_svg, width=width/72, height=height/72, pointsize=1)
-      print(plot_macs2_pileups(tlx_df, r$macs_df))
+      print(plot_macs2_pileups(tlx_df, r$macs_df, extsize=extsize, exttype=exttype))
       dev.off()
       list(src=normalizePath(session$userData$compare_pileup_svg), contentType='image/svg+xml', width=width, height=height, alt="Compare pileups for MACS2 hits")
     }, deleteFile=F)

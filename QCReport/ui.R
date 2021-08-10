@@ -9,10 +9,14 @@ library(shinycssloaders)
 ui <- shiny::fluidPage(
   shinyjs::useShinyjs(),
   shiny::titlePanel("HTGTS postprocess"),
-  shiny::HTML("<style> .tlx-group .shiny-file-input-progress { margin-bottom: 1px !important; } </style>"),
-  shiny::HTML("<style> .tlx-group .shiny-file-input-progress { height: 15px !important; } </style>"),
-  shiny::HTML("<style> .tlx-group .shiny-input-container { margin-bottom: 1px !important; } </style>"),
-  shiny::HTML("<style> #input_validation { color: #FF0000; font-weight: bold; background:#fffebd } </style>"),
+  shiny::HTML("<style>
+  .tlx-group .shiny-file-input-progress { margin-bottom: 1px !important; }
+  .tlx-group .shiny-file-input-progress { height: 15px !important; }
+  .tlx-group .shiny-input-container { margin-bottom: 1px !important; }
+  #paired_inputs { display: table-row; }
+  #paired_inputs .shiny-input-container { display: table-cell; padding: 5px }
+  #input_validation { color: #FF0000; font-weight: bold; background:#fffebd }
+  </style>"),
 
 
   verbatimTextOutput("input_validation"),
@@ -20,6 +24,10 @@ ui <- shiny::fluidPage(
 
   shiny::sidebarLayout(
     shiny::sidebarPanel(
+      shiny::div(id="paired_inputs",
+        shiny::checkboxInput("paired_controls", label="Paired controls", value=T),
+        shiny::checkboxInput("paired_samples", label="Paired samples", value=T)
+      ),
       #, fileInput("tlx1", label="", placeholder="No file selected")
       shiny::span(id="tlx_files"),
       shiny::actionButton("tlx_add", label="+"),
@@ -29,7 +37,7 @@ ui <- shiny::fluidPage(
       shiny::downloadLink("download_baits", "Download baits"),
 
       shiny::fileInput("offtargets", label="Offtargets file", placeholder = "No file selected"),
-      shiny::selectInput("model", label="Model", selected="mm10", choices=c("mm10", "hg19")),
+      shiny::selectInput("model", label="Model", selected="mm10", choices=c("mm9", "mm10", "hg19")),
       shiny::numericInput("qvalue", label="MACS2 qvalue", value=0.001),
       shiny::numericInput("pileup", label="MACS2 smallest pileup to call a peak", value=5),
       shiny::numericInput("extsize", label="extsize", value=10000),
@@ -63,26 +71,27 @@ ui <- shiny::fluidPage(
       shiny::tabsetPanel(
         shiny::tabPanel(
           "Junctions",
-          shiny::plotOutput("junctions_venn", height = "auto"),
-          shiny::plotOutput("junctions_count", height = "auto")
+          shiny::plotOutput("test", height="auto"),
+          shiny::plotOutput("junctions_venn", height="auto"),
+          shiny::plotOutput("junctions_count", height="auto")
         ),
         shiny::tabPanel(
           "Repeats",
-          shiny::plotOutput("repeats_summary")
+          shiny::plotOutput("repeats_summary", height="auto")
         ),
         shiny::tabPanel(
           "Homology profile",
-          shiny::plotOutput("homology")
+          shiny::plotOutput("homology", height="auto")
         ),
         shiny::tabPanel(
           "Overview",
         shiny::downloadLink("download_macs2", "Download MACS2"),
-          shiny::plotOutput("circos") %>% shinycssloaders::withSpinner(color="#0dc5c1")
+          shiny::plotOutput("circos", height="auto") %>% shinycssloaders::withSpinner(color="#0dc5c1")
         ),
         shiny::tabPanel(
           "Compare hits",
-          shiny::plotOutput("compare_breaks") %>% shinycssloaders::withSpinner(color="#0dc5c1"),
-          shiny::plotOutput("compare_pileup") %>% shinycssloaders::withSpinner(color="#0dc5c1")
+          shiny::plotOutput("compare_breaks", height="auto") %>% shinycssloaders::withSpinner(color="#0dc5c1"),
+          shiny::plotOutput("compare_pileup", height="auto") %>% shinycssloaders::withSpinner(color="#0dc5c1")
         )
       )
     )

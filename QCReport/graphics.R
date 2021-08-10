@@ -49,7 +49,7 @@ theme_brain = function() {
    ggplot2::theme(legend.key.size=unit(20, 'pt'), plot.title=element_text(hjust=0.5), strip.background=element_blank())
 }
 
-plot_macs2_pileups = function(tlx_df, macs_df) {
+plot_macs2_pileups = function(tlx_df, macs_df, extsize, exttype) {
     macs_df = macs_df %>% dplyr::mutate(seqnames=macs_chrom, start=macs_start, end=macs_end, macs_group_i=as.numeric(factor(macs_group)))
     macs_ranges = GenomicRanges::makeGRangesFromDataFrame(macs_df, ignore.strand=T, keep.extra.columns=T)
 
@@ -62,44 +62,45 @@ plot_macs2_pileups = function(tlx_df, macs_df) {
       dplyr::ungroup() %>%
       dplyr::mutate(correction=min(total_n)/total_n)
 
-    macs_reduced_df = as.data.frame(GenomicRanges::reduce(macs_ranges)) %>%
-      dplyr::mutate(reduced_chrom=seqnames, reduced_start=start, reduced_end=end) %>%
-      dplyr::mutate(reduced_hit=paste0(reduced_chrom, ":", reduced_start, "-", reduced_end))
-    macs_reduced_ranges = GenomicRanges::makeGRangesFromDataFrame(macs_reduced_df, keep.extra.columns=T)
+    facet_ranges = GenomicRanges::reduce(GenomicRanges::makeGRangesFromDataFrame(macs_df %>% dplyr::mutate(start=start-5e5, end=end+5e5)))
+    facet_ranges = GenomicRanges::makeGRangesFromDataFrame(as.data.frame(facet_ranges) %>% dplyr::mutate(facet_chrom=seqnames, facet_start=start, facet_end=end), keep.extra.columns=T)
+    facet_df = as.data.frame(mergeByOverlaps(macs_ranges, facet_ranges)) %>%
+      dplyr::group_by(facet_chrom, facet_start, facet_end) %>%
+      dplyr::summarize(facet_start2=min(macs_start), facet_end2=max(macs_end)) %>%
+      dplyr::mutate(facet_start=facet_start2-(facet_end2-facet_start2), facet_end=facet_end2+(facet_end2-facet_start2)) %>%
+      dplyr::select(facet_chrom, facet_start, facet_end) %>%
+      dplyr::mutate(facet_hit=paste0(facet_chrom, ":", facet_start, "-", facet_end))
+    facet_ranges = GenomicRanges::makeGRangesFromDataFrame(facet_df %>% dplyr::mutate(seqnames=facet_chrom, start=facet_start, end=facet_end), keep.extra.columns=T)
 
-    facet_df = macs_df %>%
-      dplyr::ungroup() %>%
-      dplyr::group_by(macs_chrom) %>%
-      dplyr::do((function(z){
-        data.frame(facet_chrom=z$macs_chrom[1], facet_start=seq(0, 1e9, 5e5)) %>%
-          dplyr::mutate(facet_end=facet_start+5e5, seqnames=facet_chrom, start=facet_start, end=facet_end) %>%
-          dplyr::mutate(facet_hit=paste0(facet_chrom, ":", facet_start/1e6, "-", facet_end/1e6, "M"))
-      })(.))
-    facet_ranges = GenomicRanges::makeGRangesFromDataFrame(facet_df, keep.extra.columns=T)
-
-    tlxcov_df = tlx_coverage(tlx_df, group="group")
+    tlxcov_df = tlx_coverage(tlx_df, group="group", extsize=extsize, exttype=exttype)
     tlxcov_ranges = GenomicRanges::makeGRangesFromDataFrame(tlxcov_df %>% dplyr::mutate(seqnames=tlxcov_chrom, start=tlxcov_start, end=tlxcov_end), keep.extra.columns=T)
-    tlxcov2macsred_df = as.data.frame(mergeByOverlaps(tlxcov_ranges, macs_reduced_ranges))
-    tlxcov2macsred_ranges = GenomicRanges::makeGRangesFromDataFrame(tlxcov2macsred_df %>% dplyr::mutate(seqnames=tlxcov_chrom, start=tlxcov_start, end=tlxcov_end), keep.extra.columns=T)
-    ggplot_df = as.data.frame(mergeByOverlaps(tlxcov2macsred_ranges, facet_ranges)) %>%
+    tlxcov2facet_df = as.data.frame(mergeByOverlaps(tlxcov_ranges, facet_ranges)) %>%
+      dplyr::mutate(linename=paste0(tlx_group, ifelse(tlx_control, " (control)", ""))) %>%
       dplyr::inner_join(tlxsum_df, by="tlx_group") %>%
-      dplyr::mutate(tlxcov_pileup=tlxcov_pileup*correction) %>%
-      dplyr::arrange(tlxcov_chrom, tlxcov_start) %>%
-      dplyr::group_by(facet_hit) %>%
-      dplyr::filter(cumsum(tlxcov_pileup)>0) %>%
-      dplyr::ungroup()
-    ggplot_reduced_df = ggplot_df %>%
-      dplyr::group_by(facet_hit) %>%
-      dplyr::mutate(ymin=-max(tlxcov_pileup)*0.1, ymax=-max(tlxcov_pileup)*0.05) %>%
+      dplyr::mutate(tlxcov_pileup=tlxcov_pileup*correction)
+    color_group = tlxcov2facet_df %>%
+      dplyr::group_by(tlx_group) %>%
+      dplyr::mutate(color=RColorBrewer::brewer.pal(9, "Set1")[cur_group_id()]) %>%
       dplyr::ungroup() %>%
-      dplyr::distinct(facet_hit, reduced_chrom, reduced_start, reduced_end, ymin, ymax)
+      dplyr::distinct(tlx_group, tlx_control, .keep_all=T) %>%
+      dplyr::mutate(color=ifelse(tlx_control, darker_colors(color, 0.3), color)) %>%
+      dplyr::select(linename, color) %>%
+      tibble::deframe()
 
-    ggplot(ggplot_df) +
-      geom_step(aes(x=tlxcov_start, y=tlxcov_pileup, color=tlx_group)) +
-      geom_rect(aes(xmin=reduced_start, xmax=reduced_end, ymin=ymin, ymax=ymax), data=ggplot_reduced_df) +
+    macs_yranges_df = tlxcov2facet_df %>%
+      dplyr::group_by(facet_hit, facet_chrom, facet_start, facet_end) %>%
+      dplyr::summarize(ymin=-max(tlxcov_pileup)*0.1, ymax=-max(tlxcov_pileup)*0.05) %>%
+      dplyr::select(facet_hit, seqnames=facet_chrom, start=facet_start, end=facet_end, ymin, ymax)
+    macs_yranges_ranges = GenomicRanges::makeGRangesFromDataFrame(macs_yranges_df, keep.extra.columns=T)
+    macs2facet_df = as.data.frame(mergeByOverlaps(macs_ranges, macs_yranges_ranges))
+
+    ggplot(tlxcov2facet_df) +
+      geom_step(aes(x=tlxcov_start, y=tlxcov_pileup, color=linename), size=0.5, alpha=0.7) +
+      geom_rect(aes(xmin=macs_start, xmax=macs_end, ymin=ymin, ymax=ymax, fill=macs_group), data=macs2facet_df, alpha=0.7) +
       labs(x="", y="", color="Group") +
       facet_wrap(~facet_hit, scales="free") +
-      ggplot2::scale_x_continuous(breaks=scale_breaks) +
+      scale_x_continuous(breaks=scale_breaks) +
+      scale_color_manual(values=color_group) +
       theme_brain() +
       theme(legend.position="bottom") +
       guides(fill=guide_legend(nrow=2, byrow=T))
@@ -198,8 +199,11 @@ plot_circos = function(input, control, title, cytoband_path, chromosomes, bait_r
     scale = c(input=1)
     data_sum = input %>% dplyr::mutate(circos_signal="input")
   }
+
   data_sum = data_sum %>%
     dplyr::inner_join(cytoband_df, by="chrom") %>%
+    dplyr::group_by(chrom) %>%
+    dplyr::mutate(chrom_length=max(c(chrom_length, end))) %>%
     dplyr::group_by(circos_signal, chrom_length, chrom) %>%
     dplyr::do((function(d){
       dd<<-d
@@ -211,10 +215,11 @@ plot_circos = function(input, control, title, cytoband_path, chromosomes, bait_r
     dplyr::filter(end<=chrom_length) %>%
     reshape2::dcast(chrom + start + end + chrom_length + circos_chrom ~ circos_col, value.var="count_log10")
 
+
   if(has_control) {
     circos_ymax = max(c(data_sum$count_log10.input, data_sum$count_log10.control))
   } else {
-    data_sum$count_log10.input
+    circos_ymax = max(data_sum$count_log10.input)
   }
 
   circos_ylim = c(0, circos_ymax)

@@ -42,7 +42,7 @@ macs_cols = cols(
 )
 
 macs_blank = function() {
-  blank_tibble(macs_cols) %>% dplyr::mutate(macs_group=NA_character_)
+  blank_tibble(macs_cols) %>% dplyr::mutate(macs_sample=NA_character_, macs_group=NA_character_)
 }
 
 bed_read = function(path) {
