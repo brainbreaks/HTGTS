@@ -138,6 +138,8 @@ server <- function(input, output, session) {
 
           samples_control = input[[order_id]][[paste0(order_id, "_control")]]
           samples_input = input[[order_id]][[paste0(order_id, "_input")]]
+          log(samples_control)
+          log(samples_input)
 
           r$tlx_df = isolate(r$tlx_df) %>%
             dplyr::group_by(tlx_group) %>%
@@ -150,6 +152,8 @@ server <- function(input, output, session) {
               tlx_group==group_id & tlx_sample %in% samples_input~F,
               T~tlx_control)) %>%
             dplyr::ungroup()
+
+          log(sum(is.na(r$tlx_df$tlx_group_i)))
         }))
       }
 
@@ -246,7 +250,7 @@ server <- function(input, output, session) {
     r = list(tlx_df=tlx_df)
     input = list(paired_control=T, paired_samples=T)
 
-    r$tlx_df %>% dplyr::group_by(tlx_group, tlx_group_i) %>% dplyr::summarize(ctrl=any(tlx_control), smpl=any(!tlx_control)) %>% dplyr::ungroup() %>% dplyr::select(ctrl, smpl)
+    # r$tlx_df %>% dplyr::group_by(tlx_group, tlx_group_i) %>% dplyr::summarize(ctrl=any(tlx_control), smpl=any(!tlx_control)) %>% dplyr::ungroup()
 
     shiny::validate(need(!any(r$tlx_df$tlx_control) || input$extsize <= input$slocal, 'slocal should be less or equal to extsize when calling peaks with background'))
     shiny::validate(need(any(!r$tlx_df$tlx_control), 'Need to provide at least one treatment TLX'))
