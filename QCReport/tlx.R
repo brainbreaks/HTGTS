@@ -3,6 +3,7 @@ library(readr)
 library(dplyr)
 library(GenomicRanges)
 library(data.table)
+library(rstatix)
 
 tlx_cols = cols(
   Qname=readr::col_character(), JuncID=readr::col_character(), Rname=readr::col_character(), Junction=readr::col_double(),
@@ -21,16 +22,16 @@ tlx_blank = function() {
     dplyr::slice(0)
 }
 
-tlx_read = function(path, sample, group="", control=F) {
+tlx_read = function(path, sample, group="", group_i=1, control=F) {
   readr::read_tsv(path, comment="#", skip=16, col_names=names(tlx_cols$cols), col_types=tlx_cols) %>%
-      dplyr::mutate(tlx_sample=sample, tlx_path=path, tlx_group=group, tlx_control=control)
+      dplyr::mutate(tlx_sample=sample, tlx_path=path, tlx_group=group, tlx_group_i=group_i, tlx_control=control)
 }
 
 tlx_read_many = function(samples_df) {
   tlx_df.all = data.frame()
   for(f in 1:nrow(samples_df)) {
     log("Reading tlx file ", f, ":",  samples_df$path[f])
-    tlx_df.f = tlx_read(samples_df$path[f], sample=samples_df$sample[f], control=samples_df$control[f], group=samples_df$group[f])
+    tlx_df.f = tlx_read(samples_df$path[f], sample=samples_df$sample[f], control=samples_df$control[f], group=samples_df$group[f], group_i=samples_df$group_i[f])
     tlx_df.all = dplyr::bind_rows(tlx_df.all, tlx_df.f)
   }
 
@@ -108,54 +109,103 @@ tlx_identify_baits = function(tlx_df, breaksite_size=19) {
 }
 
 
-tlx_test_hits = function(tlx_df, hits_ranges) {
+tlx_test_hits = function(tlx_df, hits_ranges, paired_samples=T, paired_control=T, extsize=10000, exttype="along") {
+
+  # save(tlx_df, hits_ranges, file="d.rda")
+  # load("d.rda")
+  # macs_ranges=hits_ranges
+
   hits_df = as.data.frame(hits_ranges) %>% dplyr::mutate(compare_chrom=seqnames, compare_start=start, compare_end=end)
   hits_ranges = GenomicRanges::makeGRangesFromDataFrame(hits_df, keep.extra.columns=T)
-  tlx_ranges  = GenomicRanges::makeGRangesFromDataFrame(tlx_df %>% dplyr::mutate(seqnames=Rname, start=Rstart, end=Rend), ignore.strand=T, keep.extra.columns=T)
+
   tlxsum_df = tlx_df %>%
-    dplyr::group_by(tlx_group, tlx_sample, .drop=F) %>%
-    dplyr::summarize(total_n=sum(!tlx_is_bait_junction)) %>%
+    dplyr::group_by(tlx_sample, .drop=F) %>%
+    dplyr::summarize(compare_total=sum(!tlx_is_bait_junction)) %>%
     dplyr::ungroup()
 
-  as.data.frame(IRanges::mergeByOverlaps(hits_ranges, tlx_ranges)) %>%
-    dplyr::inner_join(tlxsum_df, by=c("tlx_group", "tlx_sample")) %>%
-    dplyr::group_by(compare_chrom, compare_start, compare_end, tlx_group, tlx_sample, total_n, .drop=F) %>%
-    dplyr::summarize(n=n(), total_n=tidyr::replace_na(total_n[1], 0)) %>%
-    dplyr::group_by(compare_chrom, compare_start, compare_end) %>%
+  # Prepare overlap counts table (add compare_n=0 for missing entries)
+  counts_df_incomplete = as.data.frame(IRanges::mergeByOverlaps(hits_ranges, tlx_ranges)) %>%
+    dplyr::rename(compare_group="tlx_group", compare_group_i="tlx_group_i", compare_sample="tlx_sample") %>%
+    dplyr::group_by(compare_chrom, compare_start, compare_end, compare_group, compare_group_i, compare_sample, tlx_control, .drop=F) %>%
+    dplyr::summarize(compare_n=n())
+  counts_df = dplyr::bind_rows(
+    counts_df_incomplete,
+    hits_df %>%
+      dplyr::select(compare_chrom, compare_start, compare_end) %>%
+      tidyr::crossing(tlx_df %>% dplyr::distinct(compare_group=tlx_group, compare_group_i=tlx_group_i, compare_sample=tlx_sample, tlx_control)) %>%
+      dplyr::mutate(compare_n=0)) %>%
+    dplyr::distinct(compare_chrom, compare_start, compare_end, compare_group, compare_group_i, compare_sample, tlx_control, .keep_all=T) %>%
+    dplyr::inner_join(tlxsum_df, by=c("compare_sample"="tlx_sample")) %>%
+    data.frame()
+
+  #
+  # Calculate breaks count adjusted with control (by substracting control breaks)
+  #
+  counts_df.input = counts_df %>% dplyr::filter(!tlx_control)
+  counts_df.control = counts_df %>% dplyr::filter(tlx_control)
+  if(paired_control) {
+   normcounts_df = counts_df.input %>%
+     dplyr::inner_join(counts_df.control %>% select(compare_chrom, compare_start, compare_end, compare_group, compare_group_i, compare_total.control=compare_total, compare_n.control=compare_n), by=c("compare_chrom", "compare_start", "compare_end", "compare_group", "compare_group_i")) %>%
+     dplyr::mutate(compare_n.control_adj=compare_n.control*(compare_total/compare_total.control),  compare_n.norm=compare_n-compare_n.control_adj, compare_frac.norm=compare_n.norm/compare_total, compare_frac=compare_n/compare_total) %>%
+     dplyr::arrange(compare_group, compare_group_i)
+  } else {
+   normcounts_df = counts_df.input %>%
+     dplyr::left_join(counts_df.control %>% dplyr::group_by(compare_chrom, compare_start, compare_end, compare_group) %>% summarize(compare_total.control=sum(compare_total), compare_n.control=sum(compare_n)), by=c("compare_chrom", "compare_start", "compare_end", "compare_group")) %>%
+     dplyr::mutate(compare_total.control=ifelse(!is.na(compare_total.control), compare_total.control, compare_total), compare_n.control=tidyr::replace_na(compare_n.control, 0)) %>%
+     dplyr::mutate(compare_n.control_adj=compare_n.control*(compare_total/compare_total.control),  compare_n.norm=compare_n-compare_n.control_adj, compare_frac.norm=compare_n.norm/compare_total, compare_frac=compare_n/compare_total) %>%
+     dplyr::arrange(compare_group, compare_group_i)
+  }
+
+  if(paired_samples)
+  {
+    normcounts_sum_df = normcounts_df %>%
+      dplyr::select(compare_chrom, compare_start, compare_end, compare_group, compare_group_i, compare_n.norm, compare_n, compare_total, compare_n.control, compare_total.control, compare_n.control_adj)
+  } else {
+    normcounts_sum_df = normcounts_df %>%
+      dplyr::group_by(compare_chrom, compare_start, compare_end, compare_group) %>%
+      dplyr::summarize(compare_group_i=1, compare_n=sum(compare_n), compare_n.norm=sum(compare_n.norm), compare_total=sum(compare_total), compare_n.control=sum(compare_n.control), compare_total.control=sum(compare_total.control)) %>%
+      dplyr::mutate(compare_n.control_adj=compare_n.control*(compare_total/compare_total.control))
+  }
+
+  z_sum.test = as.data.frame(t(apply(combn(unique(normcounts_sum_df$compare_group), 2), 2, sort))) %>%
+    dplyr::rename(compare_group1="V1", compare_group2="V2") %>%
+    dplyr::inner_join(normcounts_sum_df %>% dplyr::rename(compare_n.norm1="compare_n.norm", compare_n1="compare_n", compare_total1="compare_total", compare_n.control1="compare_n.control", compare_n.control_adj1="compare_n.control_adj", compare_total.control1="compare_total.control"), by=c("compare_group1"="compare_group")) %>%
+    dplyr::inner_join(normcounts_sum_df %>% dplyr::rename(compare_n.norm2="compare_n.norm", compare_n2="compare_n", compare_total2="compare_total", compare_n.control2="compare_n.control", compare_n.control_adj2="compare_n.control_adj", compare_total.control2="compare_total.control"), by=c("compare_group2"="compare_group", "compare_group_i", "compare_chrom", "compare_start", "compare_end")) %>%
+    # dplyr::filter(compare_group1=="group 1" & compare_group2=="group 2" & compare_chrom=="chr6" & compare_start==77128688 & compare_end==77564403) %>%
+    dplyr::group_by(compare_group1, compare_group2, compare_chrom, compare_start, compare_end) %>%
     dplyr::do((function(z){
       zz<<-z
-      do.call(rbind, apply(combn(unique(z$tlx_group), 2), 2, function(cgr) {
-        zz.cgr<<-cgr
 
-        paired=F
-        if(paired) {
-          z.gr = expand.grid(gr1=which(z$tlx_group==cgr[1]), gr2=which(z$tlx_group==cgr[2]))
-        } else {
-          z.gr = data.frame(gr1=which(z$tlx_group==cgr[1]), gr2=which(z$tlx_group==cgr[2]))
-        }
-        tables.gr = lapply(1:nrow(z.gr), function(g) z[as.numeric(z.gr[g, c("gr1", "gr2")]), c("n", "total_n")] )
-        tables.gr = abind::abind(tables.gr, along=3)
+      z.groups = c(z$compare_group1[1], z$compare_group2[1])
+      z.fold = mean(z$compare_n1/z$compare_total1) / mean(z$compare_n2/z$compare_total2)
 
-        apply(tables.gr, 3, odds.ratio)
-        i.test = mantelhaen.test(tables.gr)
-        i.test$p.value
+      # Reapeated measures ANOVA
+      z.test_data = z %>%
+        reshape2::melt(measure.vars=c("compare_n1", "compare_n.control_adj1", "compare_n2", "compare_n.control_adj2")) %>%
+        dplyr::select(compare_group_i, treatment=variable, breaks=value) %>%
+        dplyr::mutate(group=z.groups[as.numeric(gsub(".*([0-9])$", "\\1", treatment))], treatment=gsub("([0-9])$", "", treatment)) %>%
+        dplyr::mutate(treatment=c(compare_n.control="control", compare_n="treatment", compare_n.control_adj="control")[treatment]) %>%
+        dplyr::mutate(group=factor(group), treatment=factor(treatment), compare_group_i=factor(compare_group_i)) %>%
+        tibble::tibble()
+      z.aov = rstatix::anova_test(data=z.test_data, dv=breaks, wid=compare_group_i, within=c(treatment, group))
+      z.aov_pval = data.frame(z.aov) %>% dplyr::filter(Effect=="group") %>% .$p
 
+      i.contignency = lapply(split(z, 1:nrow(z)), function(y) matrix(as.numeric(y[c("compare_n1", "compare_n2", "compare_total1", "compare_total2")]), ncol=2))
+      if(length(i.contignency)>=2) {
+        i.contignency = abind::abind(i.contignency, along=3)
+        i.test = mantelhaen.test(i.contignency)
+      } else {
+        i.test = fisher.test(i.contignency[[1]])
+      }
 
-        i.contignency = as.data.frame(z[cgr, c("n", "total_n")])
-        i.test = fisher.test(i.contignency)
-        i.meta = z[cgr,] %>%
-          dplyr::mutate(group_id=1:n()) %>%
-          reshape2::melt(measure.vars=c("total_n", "n")) %>%
-          dplyr::mutate(variable=paste0("compare_", variable, group_id)) %>%
-          tibble::column_to_rownames("variable") %>%
-          dplyr::select(value) %>%
-          t() %>%
-          data.frame()
-
-        cbind(compare_group1=z$tlx_group[cgr[1]], compare_group2=z$tlx_group[cgr[2]], compare_pvalue=i.test$p.value, compare_odds=i.test$estimate, compare_fold=z$n[cgr[1]] / z$n[cgr[2]], i.meta)
-      }))
+      z %>%
+        dplyr::slice(1) %>%
+        dplyr::mutate(compare_pvalue=i.test$p.value, compare_odds=i.test$estimate, compare_aov_pvalue=z.aov_pval, compare_fold=z.fold) %>%
+        dplyr::select(compare_group1, compare_group2, compare_chrom, compare_start, compare_end, compare_pvalue, compare_odds, compare_aov_pvalue, compare_fold)
     })(.)) %>%
     data.frame()
+
+  list(test=z_sum.test, data=normcounts_df)
 }
 
 tlx_mark_bait_chromosome = function(tlx_df) {

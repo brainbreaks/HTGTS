@@ -83,15 +83,17 @@ server <- function(input, output, session) {
     group_i = r$tlx_num+1
     input_id = paste0("tlx_input", group_i)
     control_id = paste0("tlx_control", group_i)
+    tlx_id = paste0("tlx", group_i)
+    order_id = paste0("tlx_order", group_i)
     group_id = paste("group", group_i)
 
-    shiny::insertUI("#tlx_files", where="beforeEnd", immediate=T, ui=shiny::div(class="tlx-group",
+    shiny::insertUI("#tlx_files", where="beforeEnd", immediate=T, ui=shiny::div(class="tlx-group", id=tlx_id,
       fileInput(input_id, label="Input", placeholder="No file selected", multiple=T),
       shiny::downloadLink(paste0("download_pileup_", input_id), "pileup"),
-      shiny::downloadLink(paste0("download_bed_", input_id), "bed"),
-      fileInput(control_id, label="Control", placeholder="No file selected", multiple=T),
-      shiny::downloadLink(paste0("download_pileup_", control_id), "pileup"),
-      shiny::downloadLink(paste0("download_bed_", control_id), "bed"),
+      shiny::downloadLink(paste0("download_bed_", input_id), "bed")
+      # fileInput(control_id, label="Control", placeholder="No file selected", multiple=T),
+      # shiny::downloadLink(paste0("download_pileup_", control_id), "pileup"),
+      # shiny::downloadLink(paste0("download_bed_", control_id), "bed"),
     ))
 
     session$userData[[paste0("tlx", group_i, "_observer")]] = observeEvent(c(input[[input_id]], input[[control_id]]), event({
@@ -103,7 +105,9 @@ server <- function(input, output, session) {
         if(length(input[[field_id2]][,1])==0) next
 
         for(i in 1:length(input[[field_id2]][,1])) {
+          log("reading ", basename(input[[field_id2]][[i, "name"]]))
           tlx_df.i = tlx_read(input[[field_id2]][[i, "datapath"]], sample=basename(input[[field_id2]][[i, "name"]]), group=group_id, control=grepl("control", field_id2)) %>%
+            dplyr::mutate(tlx_group_i=i) %>%
             dplyr::mutate(tlx_sample=gsub("(_result)?\\.tlx$", "", tlx_sample))
           tlx_df = dplyr::bind_rows(tlx_df, tlx_df.i)
         }
@@ -114,6 +118,39 @@ server <- function(input, output, session) {
         tlx_df = tlx_mark_bait_chromosome(tlx_df)
         tlx_df = tlx_mark_bait_junctions(tlx_df, isolate(input$bait_region))
         tlx_df$tlx_is_offtarget = F
+
+        log("#", tlx_id)
+        shiny::removeUI(selector=paste0("#", tlx_id, " .bucket-list-container"), immediate=T)
+        tlx_samles = tlx_df %>%
+          dplyr::filter(tlx_group==group_id) %>%
+          dplyr::distinct(tlx_sample, tlx_control, tlx_group_i) %>%
+          dplyr::arrange(tlx_group_i)
+        shiny::insertUI(paste0("#", tlx_id), where="beforeEnd", immediate=T, ui=
+          sortable::bucket_list(
+            header="samples order",
+            sortable::add_rank_list(input_id=paste0(order_id, "_input"), text="Treatment", labels=tlx_samles %>% dplyr::filter(!tlx_control) %>% .$tlx_sample),
+            sortable::add_rank_list(input_id=paste0(order_id, "_control"), text="Control", labels=tlx_samles %>% dplyr::filter(tlx_control) %>% .$tlx_sample),
+            group_name=order_id,
+            orientation="vertical"
+          ))
+        session$userData[[paste0("tlx_order", group_i, "_observer")]] = observeEvent(input[[order_id]], event({
+          log("tlx_order", group_i, "_observer")
+
+          samples_control = input[[order_id]][[paste0(order_id, "_control")]]
+          samples_input = input[[order_id]][[paste0(order_id, "_input")]]
+
+          r$tlx_df = isolate(r$tlx_df) %>%
+            dplyr::group_by(tlx_group) %>%
+            dplyr::mutate(tlx_group_i=dplyr::case_when(
+              tlx_group==group_id & tlx_control~match(tlx_sample, samples_control),
+              tlx_group==group_id & !tlx_control~match(tlx_sample, samples_input),
+              T~tlx_group_i)) %>%
+            dplyr::mutate(tlx_control=dplyr::case_when(
+              tlx_group==group_id & tlx_sample %in% samples_control~T,
+              tlx_group==group_id & tlx_sample %in% samples_input~F,
+              T~tlx_control)) %>%
+            dplyr::ungroup()
+        }))
       }
 
       r$tlx_df = tlx_df
@@ -177,18 +214,9 @@ server <- function(input, output, session) {
 
   observeEvent(input$tlx_del, event({
     log("input$tlx_del")
+    log(r$tlx_num)
     group_i = r$tlx_num
-    input_id = paste0("tlx", r$tlx_num)
-    control_id = paste0("tlx_control", group_i)
-
-    for(field in c(input_id, control_id)) {
-      if(is.null(input[[field]])) next
-      if(length(input[[field]][,1])==0) next
-
-      for(i in 1:length(input[[field]][,1])) {
-        r$tlx_df = r$tlx_df %>% dplyr::filter(tlx_path!=input[[field]][[i, "datapath"]])
-      }
-    }
+    r$tlx_df = r$tlx_df %>% dplyr::filter(grepl(as.character(group_i), tlx_group))
 
     shiny::removeUI(selector=".tlx-group:last-of-type")
     session$userData[[paste0("tlx", group_i, "_observer")]]$destroy()
@@ -281,7 +309,10 @@ server <- function(input, output, session) {
     #                 group=gsub("^[^0-9]+[0-9/]+ ?", "", gsub(".*(One.*)", "\\1", gsub(" - (DMSO|APH)", "", Description)), perl=T),
     #                 sample=paste0(Library, ifelse(grepl("promoter", Description), "-prom", "+prom")),
     #                 control=!grepl("APH", Description, perl=T)) %>%
-    #   dplyr::select(path, sample, group, control, Description) %>%
+    #   dplyr::group_by(group) %>%
+    #   dplyr::mutate(group_i=1:n()) %>%
+    #   dplyr::ungroup() %>%
+    #   dplyr::select(path, sample, group, group_i, control, Description) %>%
     #   data.frame()
     # # r$offtargets_df = offtargets_read("Vivien/offtargets.bed")
     # tlx_df = tlx_read_many(samples_df)
@@ -294,16 +325,6 @@ server <- function(input, output, session) {
     #
     # End Vivien's
     #
-
-    # for(p in unique(tlx_df$tlx_path)) {
-    #   tlx_df.p = tlx_df %>%
-    #     dplyr::filter(tlx_path==p) %>%
-    #     dplyr::mutate(strand=ifelse(Strand=="-1", "-", "+"), start=Junction-200, end=Junction+200, score=0)
-    #
-    #   tlx_df.p %>%
-    #     dplyr::select(Rname, start, end, Qname, score, strand) %>%
-    #     readr::write_tsv(file=paste0("Vivien/bed/", tlx_df.p$tlx_sample[1], ".bed"), na="", col_names=F)
-    # }
 
 
     groups_n = length(unique(tlx_df$tlx_group))
@@ -328,6 +349,10 @@ server <- function(input, output, session) {
         dplyr::ungroup() %>%
         dplyr::select(dplyr::matches("^macs_"))
     }
+
+    macs_df = r$macs_df
+    save(tlx_df, macs_df, file="tlx_df.rda")
+    # load("tlx_df.rda")
 
     #
     # Junctions overview
@@ -530,31 +555,48 @@ server <- function(input, output, session) {
       session$userData$compare_breaks_svg = tempfile(fileext=".svg")
       log(paste0("Plot compare plot ", session$userData$compare_breaks_svg, " (w=", width, " h=", height, ")"))
       svg(session$userData$compare_breaks_svg, width=width/72, height=height/72, pointsize=1)
-      macs_ranges = GenomicRanges::makeGRangesFromDataFrame(r$macs_df %>% dplyr::select(seqnames=macs_chrom, start=macs_start, end=macs_end))
 
-      compare_df = tlx_test_hits(tlx_df, macs_ranges) %>%
-        dplyr::mutate(compare_coord=paste0(compare_start, "-", compare_end))
-      compare_long_df = rbind(
-        compare_df %>% dplyr::mutate(compare_group=compare_group1, compare_total_n=compare_total_n1, compare_n=compare_n1),
-        compare_df %>% dplyr::mutate(compare_group=compare_group2, compare_total_n=compare_total_n2, compare_n=compare_n2)
-      ) %>% dplyr::mutate(compare_frac=compare_n/compare_total_n) %>%
-        dplyr::arrange(dplyr::desc(compare_start)) %>%
-        dplyr::mutate(compare_coord=factor(compare_coord, unique(compare_coord)))
-      compare_long_df.sum = compare_long_df %>%
-        dplyr::mutate(compare_pvalue_str=ifelse(compare_pvalue<1e-3, formatC(compare_pvalue, format="e", digits=2), sprintf("%0.3f", compare_pvalue))) %>%
-        dplyr::group_by(compare_group1, compare_group2, compare_chrom, compare_coord, compare_pvalue, compare_pvalue_str) %>%
-        dplyr::summarize(compare_frac_max=max(compare_frac))
+      if(nrow(r$macs_df) > 0) {
+        log("nrow=", nrow(r$macs_df), " ncol=", ncol(r$macs_df))
+        log(colnames(r$macs_df), collapse=",")
+        macs_ranges = GenomicRanges::makeGRangesFromDataFrame(r$macs_df %>% dplyr::select(seqnames=macs_chrom, start=macs_start, end=macs_end))
+        compare_results = tlx_test_hits(tlx_df, hits_ranges=macs_ranges, paired_samples=T, paired_control=T, extsize=extsize, exttype=exttype)
+        compare_data_df = compare_results$data %>%
+          dplyr::group_by(compare_group, compare_chrom, compare_start, compare_end, compare_group_i) %>%
+          dplyr::arrange(compare_chrom, compare_start) %>%
+          dplyr::mutate(compare_coord=paste0(compare_chrom, ":", compare_start, "-", compare_end), compare_coord=factor(compare_coord, unique(compare_coord))) %>%
+          dplyr::group_by(compare_group, compare_chrom, compare_coord) %>%
+          dplyr::mutate(compare_frac_max=max(compare_frac)) %>%
+          dplyr::ungroup() %>%
+          dplyr::inner_join(compare_results$test, by=c("compare_chrom", "compare_start", "compare_end")) %>%
+          dplyr::arrange(compare_group_i) %>%
+          dplyr::mutate(compare_group_full=paste(compare_group, compare_sample, compare_chrom, compare_coord, compare_group_i, sep="-")) %>%
+          dplyr::mutate(compare_group_full=factor(compare_group_full, compare_group_full)) %>%
+          dplyr::mutate(compare_groups_list=paste0(compare_group1, "/", compare_group2))
 
-      p = ggplot(compare_long_df) +
-        geom_bar(aes(x=compare_coord, y=compare_frac, fill=compare_group), stat="identity", position="dodge") +
-        geom_segment(aes(y=compare_frac_max + 0.02*max(compare_frac_max), yend=compare_frac_max + 0.02*max(compare_frac_max), x=as.numeric(compare_coord)-0.3, xend=as.numeric(compare_coord)+0.3), data=compare_long_df.sum) +
-        geom_text(aes(y=compare_frac_max + 0.04*max(compare_frac_max), x=as.numeric(compare_coord), label=compare_pvalue_str), data=compare_long_df.sum, hjust=0) +
-        facet_grid(compare_chrom~compare_group1+compare_group2) +
-        theme_brain() +
-        theme(legend.key.size = unit(20, 'pt')) +
-        labs(x="", y="", fill="Group") +
-        coord_flip(ylim=c(0, 1.2*max(compare_long_df$compare_frac)))
-      print(p)
+        compare_pval_df = compare_results$test %>%
+          dplyr::mutate(compare_coord=paste0(compare_chrom, ":", compare_start, "-", compare_end), compare_coord=factor(compare_coord, levels(compare_data_df$compare_coord))) %>%
+          dplyr::mutate(compare_pvalue_str=ifelse(compare_pvalue<1e-3, formatC(compare_pvalue, format="e", digits=2), sprintf("%0.3f", compare_pvalue))) %>%
+          dplyr::inner_join(compare_data_df %>% dplyr::distinct(compare_group, compare_chrom, compare_coord, compare_frac_max1=compare_frac_max), by=c("compare_group1"="compare_group", "compare_chrom", "compare_coord")) %>%
+          dplyr::inner_join(compare_data_df %>% dplyr::distinct(compare_group, compare_chrom, compare_coord, compare_frac_max2=compare_frac_max), by=c("compare_group2"="compare_group", "compare_chrom", "compare_coord")) %>%
+          dplyr::mutate(compare_groups_list=paste0(compare_group1, "/", compare_group2)) %>%
+          dplyr::mutate(compare_frac_max=pmax(compare_frac_max1, compare_frac_max2)) %>%
+          dplyr::select(-compare_frac_max1, -compare_frac_max2)
+
+        p = ggplot(compare_data_df) +
+          geom_bar(aes(x=compare_coord, y=compare_frac, fill=compare_group, group=compare_group_full), stat="identity", position="dodge") +
+          geom_segment(aes(y=compare_frac_max + 0.02*max(compare_frac_max), yend=compare_frac_max + 0.02*max(compare_frac_max), x=as.numeric(compare_coord)-0.4, xend=as.numeric(compare_coord)+0.4), data=compare_pval_df) +
+          geom_text(aes(y=compare_frac_max + 0.04*max(compare_frac_max), x=as.numeric(compare_coord), label=compare_pvalue_str), data=compare_pval_df, hjust=0) +
+          facet_wrap(~compare_groups_list, scales="free_x") +
+          theme_brain() +
+          theme(legend.key.size = unit(20, 'pt')) +
+          labs(x="", y="Normalized junctions count", fill="Group") +
+          coord_flip(ylim=1.2*range(compare_data_df$compare_frac))
+        print(p)
+      } else {
+        plot(c(0, 1), c(0, 1), ann=F, bty='n', type='n', xaxt='n', yaxt='n')
+        text(x=0.5, y=0.5, paste("No hits to compare"), cex=1.6, col="black")
+      }
 
       dev.off()
       list(src=normalizePath(session$userData$compare_breaks_svg), contentType='image/svg+xml', width=width, height=height, alt="Compare pileups for MACS2 hits")

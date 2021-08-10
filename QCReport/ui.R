@@ -2,6 +2,7 @@ library(dplyr)
 library(dplyr)
 library(shiny)
 library(dqshiny)
+library(sortable)
 library(shinycssloaders)
 
 
@@ -31,7 +32,7 @@ ui <- shiny::fluidPage(
       shiny::selectInput("model", label="Model", selected="mm10", choices=c("mm10", "hg19")),
       shiny::numericInput("qvalue", label="MACS2 qvalue", value=0.001),
       shiny::numericInput("pileup", label="MACS2 smallest pileup to call a peak", value=5),
-      shiny::numericInput("extsize", label="extsize", value=2000),
+      shiny::numericInput("extsize", label="extsize", value=10000),
       shiny::numericInput("maxgap", label="maxgap", value=0),
 
       shiny::wellPanel(
@@ -49,7 +50,7 @@ ui <- shiny::fluidPage(
             shiny::column(10, shiny::numericInput("bait_region", label="", value=1500000))
           ),
           shiny::numericInput("breaksite_size", label="breaksite size", value=19),
-          shiny::numericInput("slocal", label="slocal", value=2000),
+          shiny::numericInput("slocal", label="slocal", value=10000),
           shiny::numericInput("llocal", label="llocal", value=10000000)
         )
       ),
