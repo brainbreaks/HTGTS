@@ -40,7 +40,11 @@ ui <- shiny::fluidPage(
       shiny::selectInput("model", label="Model", selected="mm10", choices=c("mm9", "mm10", "hg19")),
       shiny::numericInput("qvalue", label="MACS2 qvalue", value=0.001),
       shiny::numericInput("pileup", label="MACS2 smallest pileup to call a peak", value=5),
+
       shiny::numericInput("extsize", label="extsize", value=10000),
+      shiny::actionLink("guess_extsize", label="Guess extsize"),
+      shiny::plotOutput("extsize_plot", height="auto"),
+
       shiny::numericInput("maxgap", label="maxgap", value=0),
 
       shiny::wellPanel(

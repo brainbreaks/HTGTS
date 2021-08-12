@@ -118,7 +118,7 @@ tlx_identify_baits = function(tlx_df, breaksite_size=19) {
 }
 
 
-tlx_test_hits = function(tlx_df, hits_ranges, paired_samples=T, paired_control=T, extsize=10000, exttype="along") {
+tlx_test_hits = function(tlx_df, hits_ranges, paired_samples=T, paired_controls=T, extsize=10000, exttype="along") {
   if(exttype[1]=="along") {
     tlx_ranges  = GenomicRanges::makeGRangesFromDataFrame(tlx_df %>% dplyr::mutate(seqnames=Rname, sstart=ifelse(Strand=="-1", Junction-extsize, Junction-1), end=ifelse(Strand=="-1", Junction, Junction+extsize-1)), ignore.strand=T, keep.extra.columns=T)
   } else {
@@ -129,9 +129,11 @@ tlx_test_hits = function(tlx_df, hits_ranges, paired_samples=T, paired_control=T
     }
   }
 
-
   hits_df = as.data.frame(hits_ranges) %>% dplyr::mutate(compare_chrom=seqnames, compare_start=start, compare_end=end)
   hits_ranges = GenomicRanges::makeGRangesFromDataFrame(hits_df, keep.extra.columns=T)
+
+  hits_ranges_reduced = GenomicRanges::makeGRangesFromDataFrame(as.data.frame(GenomicRanges::reduce(hits_ranges)) %>% dplyr::mutate(compare_chrom=seqnames, compare_start=start, compare_end=end), keep.extra.columns=T)
+  hits_reduced_df = as.data.frame(hits_ranges_reduced) %>% dplyr::select(compare_chrom, compare_start, compare_end)
 
   tlxsum_df = tlx_df %>%
     dplyr::group_by(tlx_sample, .drop=F) %>%
@@ -139,13 +141,13 @@ tlx_test_hits = function(tlx_df, hits_ranges, paired_samples=T, paired_control=T
     dplyr::ungroup()
 
   # Prepare overlap counts table (add compare_n=0 for missing entries)
-  counts_df_incomplete = as.data.frame(IRanges::mergeByOverlaps(hits_ranges, tlx_ranges)) %>%
+  counts_df_incomplete = as.data.frame(IRanges::mergeByOverlaps(hits_ranges_reduced, tlx_ranges)) %>%
     dplyr::rename(compare_group="tlx_group", compare_group_i="tlx_group_i", compare_sample="tlx_sample") %>%
     dplyr::group_by(compare_chrom, compare_start, compare_end, compare_group, compare_group_i, compare_sample, tlx_control, .drop=F) %>%
     dplyr::summarize(compare_n=n())
   counts_df = dplyr::bind_rows(
     counts_df_incomplete,
-    hits_df %>%
+    hits_reduced_df %>%
       dplyr::select(compare_chrom, compare_start, compare_end) %>%
       tidyr::crossing(tlx_df %>% dplyr::distinct(compare_group=tlx_group, compare_group_i=tlx_group_i, compare_sample=tlx_sample, tlx_control)) %>%
       dplyr::mutate(compare_n=0)) %>%
@@ -158,7 +160,7 @@ tlx_test_hits = function(tlx_df, hits_ranges, paired_samples=T, paired_control=T
   #
   counts_df.input = counts_df %>% dplyr::filter(!tlx_control)
   counts_df.control = counts_df %>% dplyr::filter(tlx_control)
-  if(paired_control) {
+  if(paired_controls) {
    normcounts_df = counts_df.input %>%
      dplyr::inner_join(counts_df.control %>% select(compare_chrom, compare_start, compare_end, compare_group, compare_group_i, compare_total.control=compare_total, compare_n.control=compare_n), by=c("compare_chrom", "compare_start", "compare_end", "compare_group", "compare_group_i")) %>%
      dplyr::mutate(compare_n.control_adj=compare_n.control*(compare_total/compare_total.control),  compare_n.norm=compare_n-compare_n.control_adj, compare_frac.norm=compare_n.norm/compare_total, compare_frac=compare_n/compare_total) %>%
@@ -188,7 +190,6 @@ tlx_test_hits = function(tlx_df, hits_ranges, paired_samples=T, paired_control=T
       dplyr::rename(compare_group1="V1", compare_group2="V2") %>%
       dplyr::inner_join(normcounts_sum_df %>% dplyr::rename(compare_n.norm1="compare_n.norm", compare_n1="compare_n", compare_total1="compare_total", compare_n.control1="compare_n.control", compare_n.control_adj1="compare_n.control_adj", compare_total.control1="compare_total.control"), by=c("compare_group1"="compare_group")) %>%
       dplyr::inner_join(normcounts_sum_df %>% dplyr::rename(compare_n.norm2="compare_n.norm", compare_n2="compare_n", compare_total2="compare_total", compare_n.control2="compare_n.control", compare_n.control_adj2="compare_n.control_adj", compare_total.control2="compare_total.control"), by=c("compare_group2"="compare_group", "compare_group_i", "compare_chrom", "compare_start", "compare_end")) %>%
-      # dplyr::filter(compare_group1=="group 1" & compare_group2=="group 2" & compare_chrom=="chr6" & compare_start==77128688 & compare_end==77564403) %>%
       dplyr::group_by(compare_group1, compare_group2, compare_chrom, compare_start, compare_end) %>%
       dplyr::do((function(z){
         zz<<-z

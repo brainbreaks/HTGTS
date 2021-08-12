@@ -77,6 +77,49 @@ server <- function(input, output, session) {
     r$repeatmasker_df = repeatmasker_read(file.path(genomes_path, input$genome, "annotation/ucsc_repeatmasker.tsv"))
   }))
 
+
+  observeEvent(input$guess_extsize, event({
+    log("input$guess_extsize")
+
+    if(is.null(r$tlx_df) || nrow(r$tlx_df)==0) return(NULL)
+
+    shinyjs::toggle("extsize_plot", condition=!is.null(r$tlx_df) && nrow(r$tlx_df)>0)
+    log("extsize_plot")
+    output$extsize_plot = renderImage({
+      log("output$extsize_plot")
+      width = 640
+      height = 640
+
+      tlx_df = r$tlx_df %>%
+        dplyr::filter(!tlx_is_bait_junction) %>%
+        dplyr::distinct(Rname, Junction)
+      extsize_df = data.frame(extsize=c(seq(100, 900, 100), seq(1000, 9000, 1000), seq(10000, 90000, 10000), seq(100000, 1e6, 1e5))) %>%
+        tidyr::crossing(coverage=c(2, 5, 10, 20)) %>%
+        dplyr::rowwise() %>%
+        dplyr::do((function(z){
+          x_ranges  = GenomicRanges::makeGRangesFromDataFrame(tlx_df %>% dplyr::mutate(seqnames=Rname, start=Junction-ceiling(z$extsize/2), end=Junction+ceiling(z$extsize/2)), ignore.strand=T, keep.extra.columns=T)
+          cov_ranges = as(GenomicRanges::coverage(x_ranges), "GRanges")
+          cov_df = as.data.frame(cov_ranges) %>% dplyr::filter(score>0)
+          as.data.frame(z) %>% dplyr::mutate(overlap_prop=mean(cov_df$score>=z$coverage))
+        })(.)) %>%
+        dplyr::ungroup()
+
+      session$userData$extsize_plot_svg = tempfile(fileext=".svg")
+      log("Plot venn ", session$userData$extsize_plot_svg, " (w=", width, " h=", height, ")")
+      svg(session$userData$extsize_plot_svg, width=width/72, height=height/72, pointsize=1)
+      p = ggplot(extsize_df) +
+        geom_line(aes(x=extsize, y=overlap_prop, color=factor(coverage))) +
+        scale_x_log10(breaks = scales::trans_breaks("log10", function(x) 10^x),
+                labels = scales::trans_format("log10", scales::math_format(10^.x))) +
+        theme_brain()
+      print(p)
+      dev.off()
+
+      list(src=normalizePath(session$userData$extsize_plot_svg), contentType='image/svg+xml', width=width, height=height, alt="extsize plot")
+    }, deleteFile=F)
+  }), ignoreInit=F, ignoreNULL=F)
+
+
   observeEvent(input$tlx_add, event({
     log("input$tlx_add")
 
@@ -232,17 +275,6 @@ server <- function(input, output, session) {
     log("input$model")
     r$repeatmasker_df = repeatmasker_read(file.path(genomes_path, input$model, "annotation/ucsc_repeatmasker.tsv"), columns=c("repeatmasker_chrom", "repeatmasker_start", "repeatmasker_end", "repeatmasker_class"))
 
-    # load("a.rda")
-    # junctions_diff = tlx_df %>%
-    #   dplyr::filter(!tlx_is_bait_junction) %>%
-    #   dplyr::distinct(Rname, Junction) %>%
-    #   dplyr::arrange(Junction) %>%
-    #   dplyr::group_by(Rname) %>%
-    #   dplyr::do((function(z){ data.frame(diff=diff(z$Junction)) })(.)) %>%
-    #   dplyr::ungroup() %>%
-    #   dplyr::filter(diff>=2000 & diff <= 1e5)
-    # plot(density(junctions_diff$diff, bw=100))
-
     cytoband_path = file.path(genomes_path, input$model, "annotation/cytoBand.txt")
     cytoband = circlize::read.cytoband(cytoband_path)
     shiny::updateSelectInput(inputId="circos_chromosomes", choices=cytoband$chromosome, selected=c())
@@ -319,49 +351,13 @@ server <- function(input, output, session) {
 
     tlx_df = tlx_mark_repeats(shiny::isolate(r$tlx_df), r$repeatmasker_df)
     baits_df = shiny::isolate(r$baits_df)
+    offtargets_df = shiny::isolate(r$offtargets_df)
 
-    #
-    # Vivien's
-    #
-    # setwd("/home/s215v/Workspace/HTGTS/QCReport")
-    # r = list(); width = 1200; height=1200; effective_size=1.87e9; exttype="along"; circos_bw=50000; circos_chromosomes="chr6"; pileup=5; exclude_repeats = F; exclude_bait_region = T; bait_region = 1500000; extsize=10000; maxgap=extsize*4;  qvalue = 0.01; slocal = 50000; llocal = 10000000; model = "mm10"; genomes_path = "genomes"
-    # session = list(userData=list(
-    #   repeats_summary_svg="Vivien/reports/repeats_summary.svg",
-    #   junctions_venn_svg = "Vivien/reports/junctions_venn.svg",
-    #   homology_svg = "Vivien/reports/homology_profile.svg",
-    #   circos_svg = "Vivien/reports/circos.svg",
-    #   junctions_count_svg="Vivien/reports/junctions_count.svg",
-    #   compare_pileup_svg="Vivien/reports/compare_pileup.svg",
-    #   compare_breaks_svg="Vivien/reports/compare_breaks.svg"
-    # ))
-    # r$repeatmasker_df = repeatmasker_read("genomes/mm10/annotation/ucsc_repeatmasker.tsv", columns=c("repeatmasker_chrom", "repeatmasker_start", "repeatmasker_end", "repeatmasker_class"))
-    #
-    # cytoband_path = file.path(genomes_path, model, "annotation/cytoBand.txt")
-    # cytoband = circlize::read.cytoband(cytoband_path)
-    # #circos_chromosomes = cytoband$chromosome
-    #
-    # samples_df = rbind(readr::read_tsv("Vivien/B400_011_metadata_2.txt"), readr::read_tsv("Vivien/B400_012_metadata_complete.txt")) %>%
-    #   dplyr::filter(grepl("55|56|57|58", Library)) %>%
-    #   dplyr::mutate(path=str_glue("Vivien/{lib}_{seq}_result.tlx", lib=Library, seq=Sequencing),
-    #                 group=gsub("^[^0-9]+[0-9/]+ ?", "", gsub(".*(One.*)", "\\1", gsub(" - (DMSO|APH)", "", Description)), perl=T),
-    #                 sample=paste0(Library, ifelse(grepl("promoter", Description), "-prom", "+prom")),
-    #                 control=!grepl("APH", Description, perl=T)) %>%
-    #   dplyr::group_by(group) %>%
-    #   dplyr::mutate(group_i=1:n()) %>%
-    #   dplyr::ungroup() %>%
-    #   dplyr::select(path, sample, group, group_i, control, Description) %>%
-    #   data.frame()
-    # # r$offtargets_df = offtargets_read("Vivien/offtargets.bed")
-    # tlx_df = tlx_read_many(samples_df)
-    # tlx_df = tlx_remove_rand_chromosomes(tlx_df)
-    # tlx_df = tlx_mark_bait_chromosome(tlx_df)
-    # tlx_df = tlx_mark_bait_junctions(tlx_df, bait_region)
-    # tlx_df = tlx_mark_repeats(tlx_df, r$repeatmasker_df)
-    # tlx_df$tlx_is_offtarget = F
-    # baits_df = tlx_identify_baits(tlx_df)
-    #
-    # End Vivien's
-    #
+    save(tlx_df, baits_df, offtargets_df, genome_path, cytoband_path, exclude_repeats, circos_chromosomes, exclude_bait_region, bait_region, extsize, qvalue, pileup, slocal, llocal, model, circos_bw, effective_size, exttype, maxgap, paired_controls, paired_samples, file="c.rda")
+    # load("c.rda")
+    # baits_df = tlx_identify_baits(r$tlx_df, breaksite_size=19)
+    # circos_chromosomes = c("chr4", "chr6", "chr9")
+
     groups_n = length(unique(tlx_df$tlx_group))
     if(groups_n>1) {
       groups_grid = matrix(1:(ceiling(groups_n/2)*2), ncol=2, byrow=T)
@@ -370,8 +366,8 @@ server <- function(input, output, session) {
     }
 
     offtarget2bait_df = NULL
-    if(!is.null(r$offtargets_df)) {
-      offtarget2bait_df = join_offtarget2bait(offtargets_df=r$offtargets_df, baits_df=baits_df, genome_path=genome_path)
+    if(!is.null(offtargets_df)) {
+      offtarget2bait_df = join_offtarget2bait(offtargets_df=offtargets_df, baits_df=baits_df, genome_path=genome_path)
       tlx_df = tlx_mark_offtargets(tlx_df, offtarget2bait_df)
     }
 
@@ -592,7 +588,7 @@ server <- function(input, output, session) {
           log("nrow=", nrow(r$macs_df), " ncol=", ncol(r$macs_df))
           log(colnames(r$macs_df), collapse=",")
           macs_ranges = GenomicRanges::makeGRangesFromDataFrame(r$macs_df %>% dplyr::select(seqnames=macs_chrom, start=macs_start, end=macs_end))
-          compare_results = tlx_test_hits(tlx_df, hits_ranges=macs_ranges, paired_samples=paired_samples, paired_control=paired_controls, extsize=extsize, exttype=exttype)
+          compare_results = tlx_test_hits(tlx_df, hits_ranges=macs_ranges, paired_samples=paired_samples, paired_controls=paired_controls, extsize=extsize, exttype=exttype)
           compare_data_df = compare_results$data %>%
             dplyr::group_by(compare_group, compare_chrom, compare_start, compare_end, compare_group_i) %>%
             dplyr::arrange(compare_chrom, compare_start) %>%
