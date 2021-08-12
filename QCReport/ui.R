@@ -1,5 +1,4 @@
 library(dplyr)
-library(dplyr)
 library(shiny)
 library(dqshiny)
 library(sortable)

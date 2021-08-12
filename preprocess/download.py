@@ -11,6 +11,8 @@ import os
 import glob
 from gff_longest_transcript import find_longest_transcript
 import gzip
+from pathlib import Path
+import subprocess
 
 
 def url_exist(url):
@@ -102,12 +104,13 @@ def download_raw_genome(url, dest, overwrite=False):
     print("Joining chromosomes into single fasta file '{}'\n".format(dest))
     with open(dest, 'w') as outfile:
         # Iterate through list
-        for names in glob.glob(os.path.join(dest_chromFa, "*")):
-            with open(names) as infile:
+        for path in Path(dest_chromFa).rglob('*.fa'):
+            with open(str(path)) as infile:
                 outfile.write(infile.read())
             outfile.write("\n")
 
     shutil.rmtree(dest_chromFa)
+
 
 
 def download_bowtie2_index(url, dest, genome, overwrite=False):
@@ -124,6 +127,11 @@ def download_bowtie2_index(url, dest, genome, overwrite=False):
             except zipfile.error as e:
                 pass
 
+def build_fasta_index(path):
+    print('Building fasta index for "{}" ==> "{}i"...'.format(path, path))
+    "samtools faidx hg38.fa"
+    subprocess.run(["samtools", "faidx", path])
+
 def download_genome(genome, path):
     download_ucsc_table(genome=genome, table="rmsk", track="rmsk", dest=os.path.join(path, "{genome}/annotation/ucsc_repeatmasker.tsv".format(genome=genome)))
 
@@ -135,6 +143,8 @@ def download_genome(genome, path):
         download_raw_genome("http://hgdownload.cse.ucsc.edu/goldenPath/{genome}/bigZips/{genome}.chromFa.tar.gz".format(genome=genome), dest=os.path.join(path, "{genome}/{genome}.fa".format(genome=genome)))
     else:
         raise FileExistsError("chromFa.tar.gz url couldn't be accessed")
+
+    build_fasta_index("{genome}/{genome}.fa".format(genome=genome))
 
     download_file("http://hgdownload.cse.ucsc.edu/goldenPath/{genome}/bigZips/{genome}.chrom.sizes".format(genome=genome), dest=os.path.join(path, "{genome}/annotation/{genome}.chrom.sizes".format(genome=genome)))
     download_bowtie2_index("https://genome-idx.s3.amazonaws.com/bt/{genome}.zip".format(genome=genome), genome=genome, dest=path)
@@ -158,7 +168,8 @@ if __name__ == "__main__":
     parser.add_argument('data', choices=['mm9', 'mm10', 'hg19', 'dependencies'], help="""Should be one of the following: \n
     mm9 - mm9 model files\n  
     mm10 - mm10 model files\n
-    hg19 - hg19 model files""")
+    hg19 - hg19 model files
+    """)
     parser.add_argument('path', nargs="?", default=".", help="Path where the files will be downloaded (default: current directory)")
 
     args = parser.parse_args()

@@ -62,6 +62,7 @@ plot_macs2_pileups = function(tlx_df, macs_df, extsize, exttype) {
       dplyr::ungroup() %>%
       dplyr::mutate(correction=min(total_n)/total_n)
 
+    # @TODO sometimes facet is wey too large, much larged than the hit area*2
     facet_ranges = GenomicRanges::reduce(GenomicRanges::makeGRangesFromDataFrame(macs_df %>% dplyr::mutate(start=start-5e5, end=end+5e5)))
     facet_ranges = GenomicRanges::makeGRangesFromDataFrame(as.data.frame(facet_ranges) %>% dplyr::mutate(facet_chrom=seqnames, facet_start=start, facet_end=end), keep.extra.columns=T)
     facet_df = as.data.frame(mergeByOverlaps(macs_ranges, facet_ranges)) %>%
@@ -315,6 +316,7 @@ plot_circos = function(input, control, title, cytoband_path, chromosomes, bait_r
     }
   }
   title(title)
+  # @ TODO change legend size
   legend("bottomleft", title="Reads", legend=names(colors), fill=colors, xjust=1, yjust=1)
 
   circlize::circos.clear()
