@@ -1,3 +1,4 @@
+devtools::load_all('breaktools/')
 library(dplyr)
 library(shiny)
 library(shinyjs)
@@ -8,8 +9,7 @@ library(Gviz)
 library(stringr)
 library(ggplot2)
 library(forcats)
-source("utils.R")
-source("tlx.R")
+source("logs.R")
 source("graphics.R")
 
 download_link = function(data, file) {
@@ -193,8 +193,8 @@ server <- function(input, output, session) {
               tlx_group==group_id & !tlx_control~match(tlx_sample, samples_input),
               T~tlx_group_i)) %>%
             dplyr::ungroup()
-
-          print(r$tlx_df %>% dplyr::distinct(tlx_group, tlx_control, tlx_group_i, tlx_sample))
+          #
+          # print(r$tlx_df %>% dplyr::distinct(tlx_group, tlx_control, tlx_group_i, tlx_sample))
         }))
       }
 
@@ -441,21 +441,21 @@ server <- function(input, output, session) {
         dplyr::summarize(subset_n=n())
 
         gridExtra::grid.arrange(
-          ggplot(tlx_df.sum) +
-            geom_bar(aes(x=tlx_sample, y=subset_n, fill=Subset), stat="identity", show.legend=F) +
+          ggplot2::ggplot(tlx_df.sum) +
+            ggplot2::geom_bar(aes(x=tlx_sample, y=subset_n, fill=Subset), stat="identity", show.legend=F) +
             theme_brain() +
-            theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1), legend.key.size = unit(20, 'pt')) +
-            labs(x="", y="Junctions (absolute)", fill="Subset") +
-            facet_wrap(~tlx_group, scales="free_x"),
-          ggplot(tlx_df.sum) +
-            geom_bar(aes(x=tlx_sample, y=subset_n/total_n, fill=Subset), stat="identity") +
-            scale_y_continuous(labels = scales::percent) +
+            ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 90, vjust = 0.5, hjust=1), legend.key.size = unit(20, 'pt')) +
+            ggplot2::labs(x="", y="Junctions (absolute)", fill="Subset") +
+            ggplot2::facet_wrap(~tlx_group, scales="free_x"),
+          ggplot2::ggplot(tlx_df.sum) +
+            ggplot2::geom_bar(aes(x=tlx_sample, y=subset_n/total_n, fill=Subset), stat="identity") +
+            ggplot2::scale_y_continuous(labels = scales::percent) +
             theme_brain() +
-            theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1), legend.key.size = unit(20, 'pt')) +
-            theme(legend.position="bottom") +
-            guides(fill=guide_legend(nrow=2, byrow=T)) +
-            labs(x="", y="Junctions (relative)", fill="Subset") +
-            facet_wrap(~tlx_group, scales="free_x"),
+            ggplot2::theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1), legend.key.size = unit(20, 'pt')) +
+            ggplot2::theme(legend.position="bottom") +
+            ggplot2::guides(fill=ggplot2::guide_legend(nrow=2, byrow=T)) +
+            ggplot2::labs(x="", y="Junctions (relative)", fill="Subset") +
+            ggplot2::facet_wrap(~tlx_group, scales="free_x"),
           ncol=1, heights=c(0.45, 0.55)
         )
       dev.off()
@@ -646,7 +646,17 @@ server <- function(input, output, session) {
       session$userData$compare_pileup_svg = tempfile(fileext=".svg")
       log(paste0("Plot compare plot ", session$userData$compare_pileup_svg, " (w=", width, " h=", height, ")"))
       svg(session$userData$compare_pileup_svg, width=width/72, height=height/72, pointsize=1)
-      print(plot_macs2_pileups(tlx_df, r$macs_df, extsize=extsize, exttype=exttype))
+      if(length(unique(tlx_df$tlx_group)) > 1) {
+        if(nrow(r$macs_df) > 0) {
+          print(plot_macs2_pileups(tlx_df, r$macs_df, extsize=extsize, exttype=exttype))
+        } else {
+          plot(c(0, 1), c(0, 1), ann=F, bty='n', type='n', xaxt='n', yaxt='n')
+          text(x=0.5, y=0.5, paste("No hits to compare"), cex=30, col="black")
+        }
+      } else {
+        plot(c(0, 1), c(0, 1), ann=F, bty='n', type='n', xaxt='n', yaxt='n')
+        text(x=0.5, y=0.5, paste("Not enough groups to compare"), cex=30, col="black")
+      }
       dev.off()
       list(src=normalizePath(session$userData$compare_pileup_svg), contentType='image/svg+xml', width=width, height=height, alt="Compare pileups for MACS2 hits")
     }, deleteFile=F)

@@ -2,6 +2,10 @@ library(circlize)
 library(dplyr)
 library(RColorBrewer)
 library(colorspace)
+library(ggseqlogo)
+library(ggplot2)
+library(grid)
+library(IRanges)
 
 scale_breaks = function(x) {
     breaks = seq(0, max(x), 1e8)
@@ -32,21 +36,21 @@ plot_barcodes = function(tlx_df) {
     dplyr::mutate(barcode_seq=substr(Seq, 1, 5)) %>%
     dplyr::select(tlx_sample, barcode_seq) %>%
     split(x=as.character(.$barcode_seq), f=.$tlx_sample) %>%
-    ggseqlogo()
+    ggseqlogo::ggseqlogo()
 }
 
 darker_colors = function(colors, l=0.3) {
-  cols1 = readhex(file=textConnection(paste(colors, collapse = "\n")), class="RGB")
+  cols1 = colorspace::readhex(file=textConnection(paste(colors, collapse = "\n")), class="RGB")
   cols1 = as(cols1, "HLS")
   cols1@coords[, "L"] = pmax(0, cols1@coords[, "L"] - l)
-  cols1 = hex(as(cols1, "RGB"))
+  cols1 = colorspace::hex(as(cols1, "RGB"))
   names(cols1) = names(colors)
   cols1
 }
 
 theme_brain = function() {
    ggplot2::theme_classic(base_size=18) +
-   ggplot2::theme(legend.key.size=unit(20, 'pt'), plot.title=element_text(hjust=0.5), strip.background=element_blank())
+   ggplot2::theme(legend.key.size=grid::unit(20, 'pt'), plot.title=ggplot2::element_text(hjust=0.5), strip.background=ggplot2::element_blank())
 }
 
 plot_macs2_pileups = function(tlx_df, macs_df, extsize, exttype) {
@@ -65,7 +69,7 @@ plot_macs2_pileups = function(tlx_df, macs_df, extsize, exttype) {
     # @TODO sometimes facet is wey too large, much larged than the hit area*2
     facet_ranges = GenomicRanges::reduce(GenomicRanges::makeGRangesFromDataFrame(macs_df %>% dplyr::mutate(start=start-5e5, end=end+5e5)))
     facet_ranges = GenomicRanges::makeGRangesFromDataFrame(as.data.frame(facet_ranges) %>% dplyr::mutate(facet_chrom=seqnames, facet_start=start, facet_end=end), keep.extra.columns=T)
-    facet_df = as.data.frame(mergeByOverlaps(macs_ranges, facet_ranges)) %>%
+    facet_df = as.data.frame(IRanges::mergeByOverlaps(macs_ranges, facet_ranges)) %>%
       dplyr::group_by(facet_chrom, facet_start, facet_end) %>%
       dplyr::summarize(facet_start2=min(macs_start), facet_end2=max(macs_end)) %>%
       dplyr::mutate(facet_start=facet_start2-(facet_end2-facet_start2), facet_end=facet_end2+(facet_end2-facet_start2)) %>%
@@ -75,7 +79,7 @@ plot_macs2_pileups = function(tlx_df, macs_df, extsize, exttype) {
 
     tlxcov_df = tlx_coverage(tlx_df, group="group", extsize=extsize, exttype=exttype)
     tlxcov_ranges = GenomicRanges::makeGRangesFromDataFrame(tlxcov_df %>% dplyr::mutate(seqnames=tlxcov_chrom, start=tlxcov_start, end=tlxcov_end), keep.extra.columns=T)
-    tlxcov2facet_df = as.data.frame(mergeByOverlaps(tlxcov_ranges, facet_ranges)) %>%
+    tlxcov2facet_df = as.data.frame(IRanges::mergeByOverlaps(tlxcov_ranges, facet_ranges)) %>%
       dplyr::mutate(linename=paste0(tlx_group, ifelse(tlx_control, " (control)", ""))) %>%
       dplyr::inner_join(tlxsum_df, by="tlx_group") %>%
       dplyr::mutate(tlxcov_pileup=tlxcov_pileup*correction)
@@ -93,18 +97,18 @@ plot_macs2_pileups = function(tlx_df, macs_df, extsize, exttype) {
       dplyr::summarize(ymin=-max(tlxcov_pileup)*0.1, ymax=-max(tlxcov_pileup)*0.05) %>%
       dplyr::select(facet_hit, seqnames=facet_chrom, start=facet_start, end=facet_end, ymin, ymax)
     macs_yranges_ranges = GenomicRanges::makeGRangesFromDataFrame(macs_yranges_df, keep.extra.columns=T)
-    macs2facet_df = as.data.frame(mergeByOverlaps(macs_ranges, macs_yranges_ranges))
+    macs2facet_df = as.data.frame(IRanges::mergeByOverlaps(macs_ranges, macs_yranges_ranges))
 
-    ggplot(tlxcov2facet_df) +
-      geom_step(aes(x=tlxcov_start, y=tlxcov_pileup, color=linename), size=0.5, alpha=0.7) +
-      geom_rect(aes(xmin=macs_start, xmax=macs_end, ymin=ymin, ymax=ymax, fill=macs_group), data=macs2facet_df, alpha=0.7) +
-      labs(x="", y="", color="Group") +
-      facet_wrap(~facet_hit, scales="free") +
-      scale_x_continuous(breaks=scale_breaks) +
-      scale_color_manual(values=color_group) +
+    ggplot2::ggplot(tlxcov2facet_df) +
+      ggplot2::geom_step(ggplot2::aes(x=tlxcov_start, y=tlxcov_pileup, color=linename), size=0.5, alpha=0.7) +
+      ggplot2::geom_rect(ggplot2::aes(xmin=macs_start, xmax=macs_end, ymin=ymin, ymax=ymax, fill=macs_group), data=macs2facet_df, alpha=0.7) +
+      ggplot2::labs(x="", y="", color="Group") +
+      ggplot2::facet_wrap(~facet_hit, scales="free") +
+      ggplot2::scale_x_continuous(breaks=scale_breaks) +
+      ggplot2::scale_color_manual(values=color_group) +
       theme_brain() +
-      theme(legend.position="bottom") +
-      guides(fill=guide_legend(nrow=2, byrow=T))
+      ggplot2::theme(legend.position="bottom") +
+      ggplot2::guides(fill=ggplot2::guide_legend(nrow=2, byrow=T))
 }
 
 plot_homology = function(tlx_df) {
@@ -116,7 +120,6 @@ plot_homology = function(tlx_df) {
     dplyr::mutate(homology_location=ifelse(tlx_is_bait_junction, "Inside bait region", "Outside bait region")) %>%
     dplyr::filter(is.na(tlx_repeatmasker_class)) %>%
     reshape2::melt(measure.vars=c("Pray", "Bait"), variable.name="homology_part", value.name="homology_size") %>%
-    #     # dplyr::filter(!tlx_is_bait_junction & homology_size>=0) %>%
     dplyr::group_by(tlx_group, tlx_sample, homology_location, homology_part, homology_size) %>%
     dplyr::summarize(homology_abundance_abs=n()) %>%
     dplyr::group_by(tlx_group, tlx_sample, homology_part, homology_location) %>%
@@ -131,23 +134,22 @@ plot_homology = function(tlx_df) {
     homology_ylim = homology_df.gr %>%
       dplyr::group_by(tlx_group) %>%
       dplyr::summarize(homology_abundance_rel=max(abs(homology_abundance_rel)))
-    p[[length(p)+1]] = ggplot(homology_df.gr) +
-      geom_rect(aes(ymin=0, ymax=homology_abundance_rel*100, xmin=0, xmax=100), fill="#FF000005", data=homology_ylim) +
-      geom_rect(aes(ymin=-homology_abundance_rel*100, ymax=0, xmin=0, xmax=100), fill="#0000FF05", data=homology_ylim) +
-      geom_text(aes(x=20, y=homology_abundance_rel*100/2), label="Pray", data=homology_ylim, size=8, hjust=1) +
-      geom_text(aes(x=20, y=-homology_abundance_rel*100/2), label="Bait", data=homology_ylim, size=8, hjust=1) +
-      geom_hline(yintercept=0) +
-      ggplot2::geom_line(aes(x=homology_size, y=homology_abundance_rel*100, color=tlx_sample, group=paste0(tlx_sample, homology_location, homology_part))) +
+    p[[length(p)+1]] = ggplot2::ggplot(homology_df.gr) +
+      ggplot2::geom_rect(ggplot2::aes(ymin=0, ymax=homology_abundance_rel*100, xmin=0, xmax=100), fill="#FF000005", data=homology_ylim) +
+      ggplot2::geom_rect(ggplot2::aes(ymin=-homology_abundance_rel*100, ymax=0, xmin=0, xmax=100), fill="#0000FF05", data=homology_ylim) +
+      ggplot2::geom_text(ggplot2::aes(x=20, y=homology_abundance_rel*100/2), label="Pray", data=homology_ylim, size=8, hjust=1) +
+      ggplot2::geom_text(ggplot2::aes(x=20, y=-homology_abundance_rel*100/2), label="Bait", data=homology_ylim, size=8, hjust=1) +
+      ggplot2::geom_hline(yintercept=0) +
+      ggplot2::geom_line(ggplot2::aes(x=homology_size, y=homology_abundance_rel*100, color=tlx_sample, group=paste0(tlx_sample, homology_location, homology_part))) +
       ggplot2::labs(x="Deletion size", y="% of junctions", color="Sample") +
-      # ggplot2::scale_x_continuous(breaks=scale_breaks_2) +
       ggplot2::scale_y_continuous(labels=abs) +
       ggplot2::coord_cartesian(xlim=c(1, 20)) +
       ggplot2::facet_grid(homology_location~., scales="free") +
       ggplot2::theme_classic(base_size=18) +
-      ggplot2::theme(legend.key.size=unit(20, 'pt'), plot.title=element_text(hjust=0.5), strip.background=element_blank())
+      ggplot2::theme(legend.key.size=grid::unit(20, 'pt'), plot.title=ggplot2::element_text(hjust=0.5), strip.background=ggplot2::element_blank())
   }
 
-  gridExtra::grid.arrange(grobs=p, top=textGrob("Junctions homology stats\n(Excluding junctions overlapping with repeats)", gp=gpar(fontsize=20,font=20)))
+  gridExtra::grid.arrange(grobs=p, top=grid::textGrob("Junctions homology stats\n(Excluding junctions overlapping with repeats)", gp=grid::gpar(fontsize=20,font=20)))
 }
 
 plot_venn = function(x, main, pallete="Pastel2", size=500) {
@@ -224,8 +226,8 @@ plot_circos = function(input, control, title, cytoband_path, chromosomes, bait_r
   }
 
   circos_ylim = c(0, circos_ymax)
-  circos_ylabels = sort(expand.grid(power=10**seq(0, ceiling(circos_ylim[2]), 1), prec=c(1, 2, 5)) %>% dplyr::mutate(y=power*prec) %>% .$y)
-  circos_ylabels = circos_ylabels[circos_ylabels<=10**circos_ymax]
+  circos_ylabels = sort(expand.grid(power=10^seq(0, ceiling(circos_ylim[2]), 1), prec=c(1, 2, 5)) %>% dplyr::mutate(y=power*prec) %>% .$y)
+  circos_ylabels = circos_ylabels[circos_ylabels<=10^circos_ymax]
   circos_yaxis = log10(circos_ylabels)
   circos_yaxis_pal = circlize::colorRamp2(circos_yaxis, colorRampPalette(rev(RColorBrewer::brewer.pal(5, "Blues")))(length(circos_yaxis)), transparency=0.8)
 
@@ -233,7 +235,7 @@ plot_circos = function(input, control, title, cytoband_path, chromosomes, bait_r
   # barplot(rep(1,3), col=colors_darker)
   # barplot(rep(1,3), col=colors)
 
-  circos.par("gap.degree"=c(rep(1, length(chromosomes)-1), 5))
+  circlize::circos.par("gap.degree"=c(rep(1, length(chromosomes)-1), 5))
   par(cex=cex, cex.main=cex)
   circlize::circos.initializeWithIdeogram(cytoband=cytoband_path, chromosome.index=chromosomes, plotType=c("axis", "labels"))
   circlize::circos.genomicTrack(data_sum, bg.border=NA, ylim=circos_ylim,

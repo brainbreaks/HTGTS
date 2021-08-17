@@ -1,0 +1,4 @@
+[submodule "QCReport/breaktools"]
+	path = QCReport/breaktools
+	url = git@github.com:brainbreaks/breaktools.git
+	branch = master

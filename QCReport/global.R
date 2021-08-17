@@ -5,7 +5,7 @@ library(shinyjs)
 library(GenomeInfoDb)
 library(shiny)
 library(BSgenome)
-source("utils.R")
+devtools::load_all('breaktools')
 source("graphics.R")
 
 

@@ -1,3 +1,8 @@
+library(dplyr)
+library(Rsamtools)
+library(IRanges)
+library(tidyr)
+
 analyze.offtargets = function(sequences, genomes_path, model) {
   #
   # Find primers position in genome
@@ -19,7 +24,7 @@ analyze.offtargets = function(sequences, genomes_path, model) {
   sequences_bow_bam = tempfile()
   model_fasta = file.path(genomes_path, model, paste0(model, ".fa"))
   model_path = file.path(genomes_path, model, model)
-  writeLines(paste0(">query", 1:length(sequences), "\n", sequences), con=sequences_fasta)
+  writeLines(paste0(">query", seq_along(sequences), "\n", sequences), con=sequences_fasta)
 
   system(paste("bwa mem -t 30 -k 5 -C -a -T 10 -B 1 -O 100 -E 100 -L 100 -D 0 -c 70000 -y 60000", model_fasta, sequences_fasta, ">", sequences_bwa_sam))
   system(paste("samtools sort -@ 30", sequences_bwa_sam, ">", sequences_bwa_bam))
