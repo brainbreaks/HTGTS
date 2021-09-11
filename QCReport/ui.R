@@ -101,5 +101,6 @@ ui <- shiny::fluidPage(
   ),
 
   shiny::actionLink("logs_hide", "show logs"),
+  shiny::actionLink("restart", "restart app"),
   textOutput("logs")
 )

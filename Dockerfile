@@ -46,11 +46,12 @@ RUN cd /bin && \
     cd fastq-multx_source && \
     make
 
-COPY ./transloc_pipeline_v3 $DESTINATION/HTGTS
-COPY preprocess/download.py  $DESTINATION/download.py
-RUN echo '#!/bin/bash \npython3 $DESTINATION/download.py "$@"' > $DESTINATION/download; chmod 755 $DESTINATION/download
-COPY preprocess/gff_longest_transcript.py  $DESTINATION/gff_longest_transcript.py
-RUN echo '#!/bin/bash \npython3 $DESTINATION/gff_longest_transcript.py "$@"' > $DESTINATION/longest-transcript; chmod 755 $DESTINATION/longest-transcript
+#COPY ./transloc_pipeline_v3 $DESTINATION/HTGTS
+#COPY preprocess/download.py  $DESTINATION/download.py
+#RUN echo '#!/bin/bash \npython3 $DESTINATION/download.py "$@"' > $DESTINATION/download; chmod 755 $DESTINATION/download
+#COPY preprocess/gff_longest_transcript.py  $DESTINATION/gff_longest_transcript.py
+#RUN echo '#!/bin/bash \npython3 $DESTINATION/gff_longest_transcript.py "$@"' > $DESTINATION/longest-transcript; chmod 755 $DESTINATION/longest-transcript
+
 COPY Entrypoint  $DESTINATION/Entrypoint
 RUN chmod 755 $DESTINATION/Entrypoint $DESTINATION/HTGTS/bin/*  $DESTINATION/HTGTS/tools/*
 

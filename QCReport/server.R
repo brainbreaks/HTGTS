@@ -316,6 +316,14 @@ server <- function(input, output, session) {
     r$offtargets_df = offtargets_read(input$offtargets$datapath)
   }), ignoreInit=T)
 
+
+  observeEvent(input$restart, event({
+    log("input$restart")
+    stopApp()
+    log("Nothing should be visible after stopping app")
+  }))
+
+
   observeEvent(input$calculate, event({
     log("input$calculate")
 
@@ -353,7 +361,7 @@ server <- function(input, output, session) {
     baits_df = shiny::isolate(r$baits_df)
     offtargets_df = shiny::isolate(r$offtargets_df)
 
-    save(tlx_df, baits_df, offtargets_df, genome_path, cytoband_path, exclude_repeats, circos_chromosomes, exclude_bait_region, bait_region, extsize, qvalue, pileup, slocal, llocal, model, circos_bw, effective_size, exttype, maxgap, paired_controls, paired_samples, file="c.rda")
+    # save(tlx_df, baits_df, offtargets_df, genome_path, cytoband_path, exclude_repeats, circos_chromosomes, exclude_bait_region, bait_region, extsize, qvalue, pileup, slocal, llocal, model, circos_bw, effective_size, exttype, maxgap, paired_controls, paired_samples, file="c.rda")
     # load("c.rda")
     # baits_df = tlx_identify_baits(r$tlx_df, breaksite_size=19)
     # circos_chromosomes = c("chr4", "chr6", "chr9")
