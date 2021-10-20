@@ -40,8 +40,8 @@ singularity exec -B `pwd` htgts_latest.sif download mm10
 
 Run HTGTS pipeline. Keep in mind that refGene annotation file (refGene.bed) is created automatically for you from geneRef.gtf 
 ```console
-singularity exec -B `pwd` htgts_latest.sif TranslocPreprocess.pl tutorial_metadata.txt preprocess --read1 pooled_R1.fastq.gz --read2 pooled_R2.fastq.gz
-singularity exec -B `pwd` htgts_latest.sif TranslocWrapper.pl tutorial_metadata.txt preprocess/ results/ --threads 2
+singularity exec -B `pwd` htgts_latest.sif TranslocPreprocess.pl tutorial_metadata.txt preprocess --read1 pooled_R1.fastq.gz --read2 pooled_R2.fastq.gz --threads 16
+singularity exec -B `pwd` htgts_latest.sif TranslocWrapper.pl tutorial_metadata.txt preprocess/ results/ --threads 8
 ```
 
 Detect translocation peaks using MACS2
@@ -75,8 +75,8 @@ docker run -v ${PWD}:/mount -u $(id -g ${USER}):$(id -g ${USER}) -it --entrypoin
 
 Run HTGTS pipeline. Keep in mind that refGene annotation file (refGene.bed) is created automatically for you from geneRef.gtf 
 ```console
-docker run -v ${PWD}:/mount -u $(id -g ${USER}):$(id -g ${USER}) -it --entrypoint TranslocPreprocess.pl htgts tutorial_metadata.txt preprocess --read1 pooled_R1.fastq.gz --read2 pooled_R2.fastq.gz
-docker run -v ${PWD}:/mount -u $(id -g ${USER}):$(id -g ${USER}) -it --entrypoint TranslocWrapper.pl htgts tutorial_metadata.txt preprocess/ results/ --threads 2
+docker run -v ${PWD}:/mount -u $(id -g ${USER}):$(id -g ${USER}) -it --entrypoint TranslocPreprocess.pl htgts tutorial_metadata.txt preprocess --read1 pooled_R1.fastq.gz --read2 pooled_R2.fastq.gz --threads 8
+docker run -v ${PWD}:/mount -u $(id -g ${USER}):$(id -g ${USER}) -it --entrypoint TranslocWrapper.pl htgts tutorial_metadata.txt preprocess/ results/ --threads 8
 ```
 
 Detect translocation peaks using MACS2
@@ -98,7 +98,7 @@ docker run -v ${PWD}:/mount -u $(id -g ${USER}):$(id -g ${USER}) -it --entrypoin
 ----------------------------------------------------
 To build Docker image you need to execute
 ```console
-docker build --build-arg http_proxy="http://www.inet.dkfz-heidelberg.de:80" --build-arg https_proxy="http://www.inet.dkfz-heidelberg.de:80" --rm -t sandrejev/htgts:latest .
+docker build --build-arg http_proxy=$http_proxy --build-arg https_proxy=$https_proxy --rm -t sandrejev/htgts:latest .
 ```
 
 <a name="build-push">Push docker image to Docker HUB</a>
@@ -111,5 +111,6 @@ docker push sandrejev/htgts:latest
 <a name="build-convert">Convert cached docker image to singularity (for local testing)</a>
 ----------------------------------------------------
 ```console
+singularity cache clean
 singularity pull docker-daemon:sandrejev/htgts:latest
 ```

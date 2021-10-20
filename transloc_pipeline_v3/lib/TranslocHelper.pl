@@ -106,8 +106,8 @@ sub find_optimal_coverage_set ($$) {
   my @graph = ();
   my $OCS_ptr;
 
-  my @R1_alns = sort {$a->{Qstart} <=> $b->{Qstart}} shuffle(values $R1_alns_ref);
-  my @R2_alns = sort {$a->{Qstart} <=> $b->{Qstart}} shuffle(values $R2_alns_ref);
+  my @R1_alns = sort {$a->{Qstart} <=> $b->{Qstart}} shuffle(values %{$R1_alns_ref});
+  my @R2_alns = sort {$a->{Qstart} <=> $b->{Qstart}} shuffle(values %{$R2_alns_ref});
 
   my $qname = $R1_alns[0]->{QnameShort};
 
