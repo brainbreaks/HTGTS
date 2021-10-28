@@ -55,7 +55,7 @@ ui <- shiny::fluidPage(
       shinyjs::hidden(
         shiny::wellPanel(id="advanced_panel",
           shiny::checkboxInput("exclude_repeats", label="Exclude repeats", value=F),
-          shiny::selectInput("exttype", label="exttype", selected="along", choices=c("along", "symmetrical", "none")),
+          shiny::selectInput("exttype", label="exttype", selected="symmetrical", choices=c("symmetrical", "along", "none")),
           shiny::fluidRow(
             shiny::column(2, shiny::checkboxInput("exclude_bait_region", label="Exclude bait region", value=T)),
             shiny::column(10, shiny::numericInput("bait_region", label="", value=1500000))

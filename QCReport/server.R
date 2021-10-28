@@ -344,11 +344,60 @@ server <- function(input, output, session) {
     maxgap = shiny::isolate(input$maxgap)
     paired_controls = shiny::isolate(input$paired_controls)
     paired_samples = shiny::isolate(input$paired_samples)
+    circos_chromosomes = shiny::isolate(input$circos_chromosomes)
+    tlx_df = shiny::isolate(r$tlx_df)
+    baits_df = shiny::isolate(r$baits_df)
+    offtargets_df = shiny::isolate(r$offtargets_df)
+
+
+    #
+    # For testing
+    #
+    # r = list()
+    # input = list()
+    # genomes_path = "./genomes"
+    # exclude_repeats = F
+    # exclude_bait_region = T
+    # bait_region = 1.5e6
+    # model = "mm10"
+    # circos_bw = 1e6
+    # effective_size = 1.87e9
+    # paired_controls = T
+    # paired_samples = T
+    # breaksite_size = 19
+    # extsize = 1e5
+    # maxgap = extsize*2
+    # exttype = "along"
+    # qvalue = 1e-3
+    # pileup = 5
+    # slocal = 1e5
+    # llocal = 1e7
+    # input = list()
+    # circos_chromosomes = paste0("chr", 1:19)
+    # samples_df = readr::read_tsv("Lorenzo/samples.tsv") %>%
+    #   dplyr::mutate(path=file.path("Lorenzo", path), control=F) %>%
+    #   dplyr::filter(grepl("LC00P1", sample))
+    # tlx_df = tlx_read_many(samples_df)
+    # tlx_df = tlx_remove_rand_chromosomes(tlx_df)
+    # tlx_df = tlx_mark_bait_chromosome(tlx_df)
+    # tlx_df = tlx_mark_bait_junctions(tlx_df, bait_region)
+    # offtargets_df = offtargets_read("Lorenzo/chr5 OT mm10.bed")
+    # baits_df = tlx_identify_baits(tlx_df, breaksite_size=breaksite_size)
+    # r$repeatmasker_df = repeatmasker_read(file.path(genomes_path, model, "annotation/ucsc_repeatmasker.tsv"))
+    # width = 960
+    # height = 960
+    # session = list(userData=list())
+    # session$userData$junctions_venn_svg = "Lorenzo/junctions_venn.svg"
+    # session$userData$junctions_count_svg = "Lorenzo/junctions_count.svg"
+    # session$userData$repeats_summary_svg = "Lorenzo/repeats_summary.svg"
+    # session$userData$homology_svg = "Lorenzo/homology.svg"
+    # session$userData$circos_svg = "Lorenzo/circos.svg"
+    # session$userData$compare_breaks_svg = "Lorenzo/compare_breaks.svg"
+
 
     genome_path = file.path(genomes_path, model, paste0(model, ".fa"))
     cytoband_path = file.path(genomes_path, model, "annotation/cytoBand.txt")
 
-    circos_chromosomes = shiny::isolate(input$circos_chromosomes)
     if(length(circos_chromosomes)==0) {
       cytoband = circlize::read.cytoband(cytoband_path)
       circos_chromosomes = cytoband$chromosome
@@ -356,10 +405,7 @@ server <- function(input, output, session) {
 
     log_input(input)
     log("effective_size=", effective_size)
-
-    tlx_df = tlx_mark_repeats(shiny::isolate(r$tlx_df), r$repeatmasker_df)
-    baits_df = shiny::isolate(r$baits_df)
-    offtargets_df = shiny::isolate(r$offtargets_df)
+    tlx_df = tlx_mark_repeats(tlx_df, r$repeatmasker_df)
 
     # save(tlx_df, baits_df, offtargets_df, genome_path, cytoband_path, exclude_repeats, circos_chromosomes, exclude_bait_region, bait_region, extsize, qvalue, pileup, slocal, llocal, model, circos_bw, effective_size, exttype, maxgap, paired_controls, paired_samples, file="c.rda")
     # load("c.rda")
@@ -379,7 +425,7 @@ server <- function(input, output, session) {
       tlx_df = tlx_mark_offtargets(tlx_df, offtarget2bait_df)
     }
 
-    r$macs_df = tlx_macs2(tlx_df, effective_size=effective_size, extsize=extsize, maxgap=maxgap, exttype=exttype, qvalue=qvalue, pileup=pileup, slocal=slocal, llocal=llocal, exclude_bait_region=exclude_bait_region, exclude_repeats=exclude_repeats)
+    r$macs_df = tlx_macs2(tlx_df, effective_size=effective_size, grouping="group", extsize=extsize, maxgap=maxgap, exttype=exttype, qvalue=qvalue, pileup=pileup, slocal=slocal, llocal=llocal, exclude_bait_region=exclude_bait_region, exclude_repeats=exclude_repeats, exclude_offtargets=F)
     if(!is.null(offtarget2bait_df)) {
       r$macs_df = r$macs_df %>%
         dplyr::left_join(offtarget2bait_df %>% dplyr::distinct(bait_group, .keep_all=T), by=c("macs_group"="bait_group")) %>%

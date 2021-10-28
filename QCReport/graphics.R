@@ -297,15 +297,15 @@ plot_circos = function(input, control, title, cytoband_path, chromosomes, bait_r
       dplyr::inner_join(cytoband_df %>% setNames(., paste0(colnames(.), "2")), by="chrom2")  %>%
       dplyr::rowwise() %>%
       dplyr::do((function(d){
-        dd<<-d
-        breaks = seq(1, d$chrom_length1[1], by=circos_bw)
+        breaks1 = seq(1, d$chrom_length1[1], by=circos_bw)
+        breaks2 = seq(1, d$chrom_length2[1], by=circos_bw)
         data.frame(
           chrom1=d$chrom1,
-          start1=breaks[which(breaks>d$start1)[1]-1],
-          end1=breaks[rev(which(breaks<d$end1))[1]+1],
+          start1=breaks1[which(breaks1>d$start1)[1]-1],
+          end1=breaks1[rev(which(breaks1<=d$end1))[1]+1],
           chrom2=d$chrom2,
-          start2=breaks[which(breaks>d$start2)[1]-1],
-          end2=breaks[rev(which(breaks<d$end2))[1]+1],
+          start2=breaks2[which(breaks2>d$start2)[1]-1],
+          end2=breaks2[rev(which(breaks2<=d$end2))[1]+1],
           color=d$color
         )
       })(.))
