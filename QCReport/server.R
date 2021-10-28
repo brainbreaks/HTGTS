@@ -221,7 +221,7 @@ server <- function(input, output, session) {
           log("input$download_pileup_", input_id)
           log(group_id)
           tlx_df.f = r$tlx_df %>% dplyr::filter(!tlx_control & tlx_group==group_id)
-          tlx_write_wig(tlx_df.f, file=file, extsize=input$extsize)
+          tlx_write_wig(tlx_df.f, path=file, group="sample", exttype=input$exttype, extsize=input$extsize)
         })
     })
 
@@ -230,7 +230,7 @@ server <- function(input, output, session) {
         event({
           log("input$download_bed_", input_id)
           tlx_df.f = r$tlx_df %>% dplyr::filter(!tlx_control & tlx_group==group_id)
-          tlx_write_bed(tlx_df.f, file=file)
+          tlx_write_bed(tlx_df.f, path=file, group="sample")
         })
       })
 
